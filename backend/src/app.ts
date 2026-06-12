@@ -36,7 +36,7 @@ export function createApp() {
     } catch {
       db = 'error';
     }
-    res.status(db === 'ok' ? 200 : 503).json({ status: db === 'ok' ? 'ok' : 'degraded', db, version: '1.0.1' });
+    res.status(db === 'ok' ? 200 : 503).json({ status: db === 'ok' ? 'ok' : 'degraded', db, version: '1.0.2' });
   });
 
   api.use('/auth', authRouter);
