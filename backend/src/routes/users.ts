@@ -16,6 +16,7 @@ usersRouter.get(
   asyncHandler(async (req, res) => {
     const { rows } = await query(
       `SELECT u.id, u.username, u.email, u.full_name, u.is_org_admin, u.is_active, u.last_login_at,
+              u.approval_status, u.self_registered,
               COALESCE(json_agg(json_build_object('project_id', pm.project_id, 'role', pm.role, 'project_name', p.name))
                        FILTER (WHERE pm.id IS NOT NULL), '[]') AS memberships
        FROM users u
@@ -97,6 +98,37 @@ usersRouter.patch(
       ]);
     }
     audit(req, 'user.update', 'user', req.params.id, null, rows[0]);
+    res.json(rows[0]);
+  })
+);
+
+// Approve / reject a self-registered (pending) user.
+usersRouter.post(
+  '/:id/approve',
+  asyncHandler(async (req, res) => {
+    const { rows } = await query(
+      `UPDATE users SET approval_status = 'approved', updated_at = now()
+       WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL
+       RETURNING id, username, approval_status`,
+      [req.params.id, req.user!.org_id]
+    );
+    if (!rows[0]) throw notFound('User not found');
+    audit(req, 'user.approve', 'user', req.params.id, null, rows[0]);
+    res.json(rows[0]);
+  })
+);
+
+usersRouter.post(
+  '/:id/reject',
+  asyncHandler(async (req, res) => {
+    const { rows } = await query(
+      `UPDATE users SET approval_status = 'rejected', is_active = FALSE, updated_at = now()
+       WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL
+       RETURNING id, username, approval_status`,
+      [req.params.id, req.user!.org_id]
+    );
+    if (!rows[0]) throw notFound('User not found');
+    audit(req, 'user.reject', 'user', req.params.id, null, rows[0]);
     res.json(rows[0]);
   })
 );

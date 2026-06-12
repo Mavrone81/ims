@@ -67,7 +67,7 @@ platformRouter.get(
   '/orgs',
   asyncHandler(async (_req, res) => {
     const { rows } = await query(
-      `SELECT o.id, o.name, o.base_currency, o.is_active, o.created_at,
+      `SELECT o.id, o.name, o.base_currency, o.is_active, o.require_user_approval, o.created_at,
               (SELECT count(*) FROM users u WHERE u.org_id = o.id AND u.deleted_at IS NULL) AS user_count,
               (SELECT count(*) FROM sites s WHERE s.org_id = o.id AND s.deleted_at IS NULL) AS site_count,
               (SELECT count(*) FROM items i JOIN projects p ON p.id = i.project_id
@@ -147,13 +147,17 @@ platformRouter.patch(
   '/orgs/:id',
   asyncHandler(async (req, res) => {
     const body = z
-      .object({ name: z.string().min(2).optional(), is_active: z.boolean().optional() })
+      .object({
+        name: z.string().min(2).optional(),
+        is_active: z.boolean().optional(),
+        require_user_approval: z.boolean().optional(),
+      })
       .parse(req.body);
     const { rows } = await query(
       `UPDATE organizations SET name = COALESCE($2, name), is_active = COALESCE($3, is_active),
-              updated_at = now()
-       WHERE id = $1 RETURNING id, name, is_active`,
-      [req.params.id, body.name ?? null, body.is_active ?? null]
+              require_user_approval = COALESCE($4, require_user_approval), updated_at = now()
+       WHERE id = $1 RETURNING id, name, is_active, require_user_approval`,
+      [req.params.id, body.name ?? null, body.is_active ?? null, body.require_user_approval ?? null]
     );
     if (!rows[0]) throw notFound('Organization not found');
     await query(

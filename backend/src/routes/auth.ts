@@ -5,7 +5,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { config } from '../config.js';
 import { query } from '../db.js';
-import { unauthorized, badRequest } from '../errors.js';
+import { unauthorized, badRequest, forbidden, notFound, conflict } from '../errors.js';
 import { asyncHandler } from '../utils/http.js';
 import { authenticate } from '../middleware/auth.js';
 import { loginRateLimit } from '../middleware/loginRateLimit.js';
@@ -52,7 +52,8 @@ authRouter.post(
       .parse(req.body);
 
     const { rows } = await query(
-      `SELECT u.id, u.org_id, u.username, u.email, u.full_name, u.password_hash, u.is_org_admin
+      `SELECT u.id, u.org_id, u.username, u.email, u.full_name, u.password_hash, u.is_org_admin,
+              u.approval_status
        FROM users u
        JOIN organizations o ON o.id = u.org_id AND o.is_active
        WHERE u.username = $1 AND u.is_active AND u.deleted_at IS NULL`,
@@ -61,6 +62,13 @@ authRouter.post(
     const user = rows[0];
     if (!user || !(await bcrypt.compare(password, user.password_hash))) {
       throw unauthorized('Invalid username or password');
+    }
+    // Password is correct — now gate on self-registration approval state.
+    if (user.approval_status === 'pending') {
+      throw forbidden('Your account is awaiting administrator approval.');
+    }
+    if (user.approval_status === 'rejected') {
+      throw forbidden('Your registration was not approved. Contact your administrator.');
     }
     await query('UPDATE users SET last_login_at = now() WHERE id = $1', [user.id]);
 
@@ -115,6 +123,63 @@ authRouter.post(
       ]);
     }
     res.status(204).end();
+  })
+);
+
+// Public list of companies a prospective user can register against.
+authRouter.get(
+  '/companies',
+  asyncHandler(async (_req, res) => {
+    const { rows } = await query(
+      `SELECT id, name FROM organizations WHERE is_active ORDER BY name`
+    );
+    res.json({ data: rows });
+  })
+);
+
+// Public self-registration. Creates a non-admin user in the chosen company.
+// If that company requires approval, the account is 'pending' and cannot log
+// in until an org admin approves it; otherwise it is usable immediately.
+authRouter.post(
+  '/register',
+  asyncHandler(async (req, res) => {
+    const body = z
+      .object({
+        org_id: z.string().uuid(),
+        username: z.string().min(2).regex(/^[a-zA-Z0-9._-]+$/, 'letters, digits, . _ - only'),
+        full_name: z.string().min(1),
+        email: z.string().email().nullish(),
+        password: z.string().min(8),
+      })
+      .parse(req.body);
+
+    const org = (
+      await query(`SELECT id, require_user_approval FROM organizations WHERE id = $1 AND is_active`, [
+        body.org_id,
+      ])
+    ).rows[0];
+    if (!org) throw notFound('Selected company not found');
+
+    const status = org.require_user_approval ? 'pending' : 'approved';
+    const hash = await bcrypt.hash(body.password, config.saltRounds);
+    try {
+      await query(
+        `INSERT INTO users (org_id, username, email, full_name, password_hash,
+                            is_org_admin, self_registered, approval_status)
+         VALUES ($1, $2, $3, $4, $5, FALSE, TRUE, $6)`,
+        [body.org_id, body.username, body.email ?? null, body.full_name, hash, status]
+      );
+    } catch (err: any) {
+      if (err?.code === '23505') throw conflict('That username is already taken');
+      throw err;
+    }
+    res.status(201).json({
+      status,
+      message:
+        status === 'pending'
+          ? 'Registration submitted. An administrator must approve your account before you can sign in.'
+          : 'Registration complete. You can now sign in.',
+    });
   })
 );
 

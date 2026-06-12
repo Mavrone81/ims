@@ -33,6 +33,7 @@ interface Org {
   name: string;
   base_currency: string;
   is_active: boolean;
+  require_user_approval: boolean;
   created_at: string;
   user_count: number;
   site_count: number;
@@ -159,6 +160,12 @@ function PlatformConsole({ onLogout }: { onLogout: () => void }) {
     load();
   }
 
+  async function toggleApproval(org: Org) {
+    await papi(`/orgs/${org.id}`, { method: 'PATCH', body: { require_user_approval: !org.require_user_approval } });
+    toast(`${org.name}: self-registration approval ${org.require_user_approval ? 'turned OFF (auto-approve)' : 'turned ON'}`);
+    load();
+  }
+
   return (
     <div className="content" style={{ paddingTop: 24 }}>
       <div className="page-head">
@@ -176,7 +183,7 @@ function PlatformConsole({ onLogout }: { onLogout: () => void }) {
             <tr>
               <th>Company</th><th>Base currency</th><th className="num">Users</th>
               <th className="num">Sites</th><th className="num">Items</th>
-              <th>Created</th><th>Status</th><th />
+              <th>Created</th><th>Status</th><th>Self-reg approval</th><th />
             </tr>
           </thead>
           <tbody>
@@ -189,6 +196,13 @@ function PlatformConsole({ onLogout }: { onLogout: () => void }) {
                 <td className="num">{o.item_count}</td>
                 <td>{fmtDate(o.created_at)}</td>
                 <td>{o.is_active ? <span className="badge green">active</span> : <span className="badge red">inactive</span>}</td>
+                <td>
+                  <button className="btn ghost sm" onClick={() => toggleApproval(o)} title="Toggle whether self-registered users need admin approval">
+                    {o.require_user_approval
+                      ? <span className="badge amber">required</span>
+                      : <span className="badge gray">auto-approve</span>}
+                  </button>
+                </td>
                 <td>
                   <button className="btn ghost sm" onClick={() => toggleActive(o)}>
                     {o.is_active ? 'Deactivate' : 'Reactivate'}

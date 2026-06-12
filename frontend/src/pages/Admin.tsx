@@ -375,6 +375,19 @@ function UsersTab() {
     }
   }
 
+  async function decide(u: any, action: 'approve' | 'reject') {
+    if (action === 'reject' && !confirm(`Reject ${u.username}'s registration? They will not be able to sign in.`)) return;
+    try {
+      await api(`/users/${u.id}/${action}`, { method: 'POST' });
+      toast(`${u.username} ${action === 'approve' ? 'approved' : 'rejected'}`);
+      load();
+    } catch (err: any) {
+      toast(err.message ?? 'Failed', true);
+    }
+  }
+
+  const pendingCount = users.filter((u) => u.approval_status === 'pending').length;
+
   async function save() {
     try {
       await api('/users', { method: 'POST', body: { ...form, email: form.email || null } });
@@ -389,12 +402,15 @@ function UsersTab() {
 
   return (
     <>
-      <div style={{ marginBottom: 14 }}>
+      <div style={{ marginBottom: 14, display: 'flex', gap: 12, alignItems: 'center' }}>
         <button className="btn" onClick={() => { setError(''); setShow(true); }}>+ New user</button>
+        {pendingCount > 0 && (
+          <span className="badge amber">{pendingCount} pending approval</span>
+        )}
       </div>
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Username</th><th>Name</th><th>Email</th><th>Org admin</th><th>Active</th><th>Memberships</th><th /></tr></thead>
+          <thead><tr><th>Username</th><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Memberships</th><th /></tr></thead>
           <tbody>
             {users.map((u) => (
               <tr key={u.id}>
@@ -402,18 +418,33 @@ function UsersTab() {
                 <td>{u.full_name}</td>
                 <td>{u.email ?? '—'}</td>
                 <td>{u.is_org_admin ? <span className="badge blue">admin</span> : '—'}</td>
-                <td>{u.is_active ? <span className="badge green">active</span> : <span className="badge gray">inactive</span>}</td>
+                <td>
+                  {u.approval_status === 'pending' ? <span className="badge amber">pending</span>
+                    : u.approval_status === 'rejected' ? <span className="badge red">rejected</span>
+                    : u.is_active ? <span className="badge green">active</span>
+                    : <span className="badge gray">inactive</span>}
+                  {u.self_registered && <span className="badge gray" style={{ marginLeft: 4 }}>self-reg</span>}
+                </td>
                 <td>{u.memberships.map((m: any) => `${m.project_name}: ${m.role}`).join(', ') || '—'}</td>
                 <td style={{ whiteSpace: 'nowrap' }}>
-                  <button className="btn ghost sm" onClick={() => { setResetPw(''); setResetUser(u); }}>
-                    Reset password
-                  </button>
-                  {u.is_active && (
-                    <button className="btn ghost sm" onClick={async () => {
-                      if (!confirm(`Deactivate ${u.full_name}?`)) return;
-                      await api(`/users/${u.id}`, { method: 'DELETE' });
-                      load();
-                    }}>Deactivate</button>
+                  {u.approval_status === 'pending' ? (
+                    <>
+                      <button className="btn ghost sm" onClick={() => decide(u, 'approve')}>Approve</button>
+                      <button className="btn ghost sm" onClick={() => decide(u, 'reject')}>Reject</button>
+                    </>
+                  ) : (
+                    <>
+                      <button className="btn ghost sm" onClick={() => { setResetPw(''); setResetUser(u); }}>
+                        Reset password
+                      </button>
+                      {u.is_active && (
+                        <button className="btn ghost sm" onClick={async () => {
+                          if (!confirm(`Deactivate ${u.full_name}?`)) return;
+                          await api(`/users/${u.id}`, { method: 'DELETE' });
+                          load();
+                        }}>Deactivate</button>
+                      )}
+                    </>
                   )}
                 </td>
               </tr>
