@@ -95,6 +95,23 @@ TOKEN=$(curl -s -X POST localhost:4000/api/v1/auth/login \
   -d '{"email":"admin@ims.local","password":"admin123"}' | jq -r .access_token)
 ```
 
+## Production deployment (CI/CD)
+
+Production runs at **https://ims.urbanwerkzsg.com** via `docker-compose.prod.yml`
+(services `db` / `api` / `web`; the DB persists in the named volume `ims_pgdata`).
+Deploys use a **server-side pull model** — no GitHub Actions or secrets:
+
+1. A cron job on the server runs [`deploy/auto-deploy-ims.sh`](deploy/auto-deploy-ims.sh)
+   every minute under `flock` (installed at `/root/auto-deploy-ims.sh`).
+2. On a new commit on `main`, it `git reset --hard origin/main` (code only —
+   the server-managed `.env` and DB volume are git-ignored/untouched) and runs
+   `docker compose -f docker-compose.prod.yml up -d --build api web`.
+3. Migrations run automatically on api boot (idempotent, additive-only).
+4. Logs: `/var/log/ims-deploy.log` on the server.
+
+So **pushing to `main` deploys to production within ~1 minute.** Secrets live
+only in `/root/ims/.env` on the server (template: `.env.prod.example`).
+
 ## Configuration
 
 Copy `backend/.env.example` → `backend/.env` and set `DATABASE_URL` to match

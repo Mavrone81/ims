@@ -1,0 +1,53 @@
+# Production stack for ims.urbanwerkzsg.com — compose project "ims".
+# Secrets come from a server-managed .env next to this file (git-ignored;
+# template: .env.prod.example). The DB lives in the named volume ims_pgdata,
+# which deploys never touch. Only `web` publishes a host port (localhost-only;
+# the host nginx vhost proxies ims.urbanwerkzsg.com -> 127.0.0.1:8088).
+name: ims
+
+services:
+  db:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ims_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      POSTGRES_DB: ims
+    volumes:
+      - ims_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ims_user -d ims"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  api:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      API_BASE_PATH: /api/v1
+      DATABASE_URL: postgresql://ims_user:${DB_PASSWORD}@db:5432/ims
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?set JWT_ACCESS_SECRET in .env}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?set JWT_REFRESH_SECRET in .env}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://ims.urbanwerkzsg.com}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-300}
+      DEFAULT_BASE_CURRENCY: ${DEFAULT_BASE_CURRENCY:-USD}
+      WRITE_OFF_APPROVAL_THRESHOLD: ${WRITE_OFF_APPROVAL_THRESHOLD:-500}
+      ALLOW_NEGATIVE_STOCK: ${ALLOW_NEGATIVE_STOCK:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8088:80"
+    depends_on:
+      - api
+
+volumes:
+  ims_pgdata:
