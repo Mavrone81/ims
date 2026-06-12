@@ -64,3 +64,32 @@ jobs:
       - name: Build (tsc + vite)
         working-directory: frontend
         run: npm run build
+
+  # On success, push a marker ref the server's deploy gate reads over the git
+  # protocol (no REST API → no rate limit). Runs only if both builds passed.
+  ci-pass-marker:
+    name: Publish CI-pass marker
+    needs: [backend, frontend]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # required to push refs/ci-pass/* with GITHUB_TOKEN
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 25   # enough history to prune by recent commits
+      - name: Push marker + prune old markers
+        run: |
+          set -euo pipefail
+          # Marker for THIS commit (must succeed — surfaces a permissions issue loudly).
+          git push origin "HEAD:refs/ci-pass/${GITHUB_SHA}"
+          echo "pushed refs/ci-pass/${GITHUB_SHA}"
+          # Prune: keep only markers whose sha is in the last 20 commits of main.
+          recent="$(git rev-list -n 20 "$GITHUB_SHA" | tr '\n' ' ')"
+          git ls-remote origin 'refs/ci-pass/*' | awk '{print $2}' | while read -r ref; do
+            sha="${ref#refs/ci-pass/}"
+            case " $recent " in
+              *" $sha "*) : ;;                          # keep — recent
+              *) git push origin --delete "$ref" || true; echo "pruned $ref" ;;
+            esac
+          done

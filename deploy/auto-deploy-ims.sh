@@ -44,39 +44,18 @@ echo "$(ts) $TAG new commit ${LOCAL:0:7} -> ${REMOTE:0:7}"
 CHANGED=$(git diff --name-only "$LOCAL" "$REMOTE")
 echo "$(ts) $TAG changed files:"; printf '%s\n' "$CHANGED" | sed 's/^/    /'
 
-# 1b) Gate on CI: only deploy a commit whose GitHub checks have passed. -------
-#     NON-BLOCKING: one API call per cron run. If CI is still running we exit 0
-#     and let the next minute's run retry — this keeps us well under GitHub's
-#     unauthenticated 60-requests/hour limit (a busy-wait here exhausted it).
-#     Uses only the check-runs API (where GitHub Actions reports); no token
-#     needed for a public repo. Never deploys on failure or while pending.
-REPO_SLUG=Mavrone81/ims
-# Throttle API calls: at most once per 180s per commit. Cron runs every minute,
-# and GitHub's UNauthenticated limit is only 60 req/hour — without this, a long
-# CI wait exhausts the quota and the gate can never read "success".
-STATE_FILE=/root/.ims-ci-state
-MIN_INTERVAL=180
-now=$(date +%s)
-last_sha=""; last_ts=0
-[ -f "$STATE_FILE" ] && read -r last_sha last_ts _ < "$STATE_FILE" 2>/dev/null
-if [ "$last_sha" = "$REMOTE" ] && [ $((now - last_ts)) -lt "$MIN_INTERVAL" ]; then
-  echo "$(ts) $TAG CI check throttled (last $((now - last_ts))s ago) — will retry next run"; exit 0
+# 1b) Gate on CI via a marker ref — NOT the REST API. -------------------------
+#     CI pushes refs/ci-pass/<sha> on success (.github/workflows/ci.yml). We
+#     query that ONE specific ref over the git protocol, which is not subject
+#     to GitHub's REST rate limit at all (the previous REST-based gate kept
+#     exhausting the 60-req/hour unauthenticated quota). Public repo → the
+#     read needs no credentials. Never deploys until the marker for the exact
+#     target commit exists; CI failure simply means no marker, so we wait.
+if git ls-remote origin "refs/ci-pass/$REMOTE" 2>/dev/null | grep -q "$REMOTE"; then
+  echo "$(ts) $TAG CI-pass marker present for ${REMOTE:0:7} — deploying"
+else
+  echo "$(ts) $TAG no CI-pass marker for ${REMOTE:0:7} yet — will retry next run"; exit 0
 fi
-echo "$REMOTE $now checked" > "$STATE_FILE"
-
-runs=$(curl -fsSL -H 'Accept: application/vnd.github+json' \
-       "https://api.github.com/repos/$REPO_SLUG/commits/$REMOTE/check-runs" 2>/dev/null)
-total=$(printf '%s' "$runs" | grep -c '"conclusion"')
-fail=$(printf '%s' "$runs" | grep -oE '"conclusion": *"(failure|cancelled|timed_out|action_required|stale)"' | wc -l | tr -d ' ')
-pending=$(printf '%s' "$runs" | grep -oE '"status": *"(queued|in_progress|pending)"' | wc -l | tr -d ' ')
-
-if [ "$fail" -gt 0 ]; then
-  echo "$(ts) $TAG CI FAILED for ${REMOTE:0:7} — not deploying"; exit 1
-fi
-if [ -z "$runs" ] || [ "$total" -eq 0 ] || [ "$pending" -gt 0 ]; then
-  echo "$(ts) $TAG CI not green yet for ${REMOTE:0:7} (total=$total pending=$pending) — will retry next run"; exit 0
-fi
-echo "$(ts) $TAG CI passed for ${REMOTE:0:7} ($total checks) — deploying"
 
 # 2) Advance code (code only; .env is git-ignored and survives) ---------------
 git reset --hard "$REMOTE"
