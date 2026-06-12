@@ -25,6 +25,7 @@ export default function Login() {
   return (
     <div className="login-page">
       <form className="card login-card" onSubmit={submit}>
+        <img src="/logo.svg" alt="IMS logo" className="login-logo" />
         <h1>IMS</h1>
         <p>Inventory Management System — sign in to continue</p>
         <div className="field">

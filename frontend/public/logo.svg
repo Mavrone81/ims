@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="IMS logo">
+  <!-- Isometric stock crate: top / left / right faces in the IMS blues -->
+  <g>
+    <polygon points="32,6 56,20 32,34 8,20" fill="#5B8CFF"/>
+    <polygon points="8,20 32,34 32,60 8,46" fill="#1E5EFF"/>
+    <polygon points="32,34 56,20 56,46 32,60" fill="#1546C0"/>
+    <!-- tape stripe across the top face -->
+    <polygon points="28,8.3 52,22.3 48,24.7 24,10.7" fill="#FFFFFF" opacity="0.85"/>
+    <!-- stock-level ticks on the left face -->
+    <rect x="13" y="31" width="12" height="3.2" rx="1.2" fill="#FFFFFF" opacity="0.9" transform="skewY(30)" transform-origin="13 31"/>
+    <rect x="13" y="38" width="8" height="3.2" rx="1.2" fill="#FFFFFF" opacity="0.65" transform="skewY(30)" transform-origin="13 38"/>
+  </g>
+</svg>

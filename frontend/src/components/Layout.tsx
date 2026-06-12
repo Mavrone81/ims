@@ -26,7 +26,10 @@ export default function Layout() {
     <div className="app">
       {navOpen && <div className="nav-backdrop" onClick={closeNav} aria-hidden="true" />}
       <aside className={`sidebar${navOpen ? ' open' : ''}`}>
-        <div className="brand">IMS</div>
+        <div className="brand">
+          <img src="/logo.svg" alt="" className="brand-logo" />
+          <span>IMS</span>
+        </div>
         <nav onClick={closeNav}>
           <NavLink to="/" end>Dashboard</NavLink>
           <NavLink to="/inventory">Inventory</NavLink>

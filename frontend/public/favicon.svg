@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Rounded app tile so the mark stays legible at 16px on any tab background -->
+  <rect width="64" height="64" rx="14" fill="#1546C0"/>
+  <polygon points="32,10 54,22.5 32,35 10,22.5" fill="#8FB0FF"/>
+  <polygon points="10,22.5 32,35 32,58 10,45.5" fill="#FFFFFF"/>
+  <polygon points="32,35 54,22.5 54,45.5 32,58" fill="#CFE0FF"/>
+  <polygon points="28.4,12 50.4,24.5 46.8,26.6 24.8,14.1" fill="#1546C0" opacity="0.55"/>
+</svg>
