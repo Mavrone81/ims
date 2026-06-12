@@ -44,6 +44,43 @@ echo "$(ts) $TAG new commit ${LOCAL:0:7} -> ${REMOTE:0:7}"
 CHANGED=$(git diff --name-only "$LOCAL" "$REMOTE")
 echo "$(ts) $TAG changed files:"; printf '%s\n' "$CHANGED" | sed 's/^/    /'
 
+# 1b) Gate on CI: only deploy a commit whose GitHub checks have passed. -------
+#     Uses the public commit-status + check-runs APIs (no token needed for a
+#     public repo). Waits up to ~10 min for CI to finish; never deploys on
+#     failure or while still running.
+REPO_SLUG=Mavrone81/ims
+ci_state() {
+  # Combined commit status (covers status checks)
+  local st
+  st=$(curl -fsSL "https://api.github.com/repos/$REPO_SLUG/commits/$REMOTE/status" 2>/dev/null \
+       | grep -o '"state": *"[a-z]*"' | head -1 | grep -o '[a-z]*"$' | tr -d '"')
+  # Check-runs conclusion (GitHub Actions reports here)
+  local runs total fail pending
+  runs=$(curl -fsSL -H 'Accept: application/vnd.github+json' \
+         "https://api.github.com/repos/$REPO_SLUG/commits/$REMOTE/check-runs" 2>/dev/null)
+  total=$(printf '%s' "$runs" | grep -c '"conclusion"')
+  fail=$(printf '%s' "$runs" | grep -oE '"conclusion": *"(failure|cancelled|timed_out|action_required)"' | wc -l | tr -d ' ')
+  pending=$(printf '%s' "$runs" | grep -oE '"status": *"(queued|in_progress)"' | wc -l | tr -d ' ')
+  if [ "$fail" -gt 0 ] || [ "$st" = "failure" ] || [ "$st" = "error" ]; then echo failure; return; fi
+  if [ "$pending" -gt 0 ] || [ "$st" = "pending" ]; then echo pending; return; fi
+  if [ "$total" -gt 0 ] || [ "$st" = "success" ]; then echo success; return; fi
+  echo unknown
+}
+
+WAITED=0
+while :; do
+  STATE=$(ci_state)
+  case "$STATE" in
+    success) echo "$(ts) $TAG CI passed for ${REMOTE:0:7}"; break ;;
+    failure) echo "$(ts) $TAG CI FAILED for ${REMOTE:0:7} — not deploying"; exit 1 ;;
+    *)
+      if [ "$WAITED" -ge 600 ]; then
+        echo "$(ts) $TAG CI still '$STATE' after ${WAITED}s — deferring to next run"; exit 0
+      fi
+      sleep 20; WAITED=$((WAITED + 20)) ;;
+  esac
+done
+
 # 2) Advance code (code only; .env is git-ignored and survives) ---------------
 git reset --hard "$REMOTE"
 

@@ -1,0 +1,66 @@
+name: CI
+
+# Runs on every push and PR to main. The server's auto-deploy only releases a
+# commit once this workflow has succeeded for it (see deploy/auto-deploy-ims.sh).
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    name: Backend — typecheck, build, test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: ims_user
+          POSTGRES_PASSWORD: ims_dev_password
+          POSTGRES_DB: ims_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U ims_user -d ims_test"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+
+    env:
+      TEST_DATABASE_URL: postgresql://ims_user:ims_dev_password@localhost:5432/ims_test
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - name: Install
+        working-directory: backend
+        run: npm ci
+      - name: Typecheck
+        working-directory: backend
+        run: npm run typecheck
+      - name: Build
+        working-directory: backend
+        run: npm run build
+      - name: Test
+        working-directory: backend
+        run: npm test
+
+  frontend:
+    name: Frontend — typecheck & build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install
+        working-directory: frontend
+        run: npm ci
+      - name: Build (tsc + vite)
+        working-directory: frontend
+        run: npm run build

@@ -76,6 +76,11 @@ export function loginRateLimit(req: Request, res: Response, next: NextFunction) 
   next();
 }
 
+/** Clear all lockout state — used by the test suite between cases. */
+export function _resetLoginRateLimit() {
+  store.clear();
+}
+
 // Periodic eviction of stale buckets.
 setInterval(() => {
   const now = Date.now();
