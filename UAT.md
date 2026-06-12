@@ -116,7 +116,16 @@ in your test log. `Automated? ✓` means a Vitest case asserts the same behaviou
 | RPT-3 | ABC | Reports → ABC | A/B/C split by value share | — |
 | RPT-4 | Export | Export any report to CSV | File downloads | — |
 
-## 9. Responsive UI
+## 9. Data protection (PII encryption at rest)
+
+| ID | Title | Steps | Expected | Automated? |
+|---|---|---|---|---|
+| ENC-1 | Supplier contact encrypted | Create a supplier with contact name/email/phone; inspect the DB row directly | API shows plaintext; the stored `email`/`contact_name`/`phone` columns are `enc:v1:…` ciphertext | ✓ |
+| ENC-2 | User email encrypted | Create a user with an email; inspect the DB row | API shows plaintext; stored `email` is `enc:v1:…` | ✓ |
+| ENC-3 | Legacy plaintext readable | A pre-encryption row | Still displays correctly (passthrough on read) | ✓ |
+| ENC-4 | Backups carry ciphertext | Decrypt a DB backup and grep a known email | The email appears only as `enc:v1:` ciphertext in the dump | — |
+
+## 10. Responsive UI
 
 | ID | Title | Steps | Expected | Automated? |
 |---|---|---|---|---|
