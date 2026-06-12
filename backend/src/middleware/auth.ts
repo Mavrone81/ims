@@ -39,9 +39,11 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
     } catch {
       throw unauthorized('Invalid or expired access token');
     }
+    if (payload.platform) throw unauthorized('Platform tokens cannot access org APIs');
     const { rows } = await query(
-      `SELECT id, org_id, username, email, full_name, is_org_admin FROM users
-       WHERE id = $1 AND is_active AND deleted_at IS NULL`,
+      `SELECT u.id, u.org_id, u.username, u.email, u.full_name, u.is_org_admin FROM users u
+       JOIN organizations o ON o.id = u.org_id AND o.is_active
+       WHERE u.id = $1 AND u.is_active AND u.deleted_at IS NULL`,
       [payload.sub]
     );
     if (!rows[0]) throw unauthorized('User no longer active');

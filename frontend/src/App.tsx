@@ -1,5 +1,6 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './auth';
+import Platform from './pages/Platform';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -12,6 +13,10 @@ import Admin from './pages/Admin';
 
 export default function App() {
   const { user, loading } = useAuth();
+  const location = useLocation();
+
+  // Platform console is independent of org-user sessions
+  if (location.pathname.startsWith('/platform')) return <Platform />;
 
   if (loading) return <div className="empty">Loading…</div>;
   if (!user) return <Login />;
