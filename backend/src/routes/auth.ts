@@ -5,9 +5,10 @@ import { createHash, randomUUID } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { config } from '../config.js';
 import { query } from '../db.js';
-import { unauthorized } from '../errors.js';
+import { unauthorized, badRequest } from '../errors.js';
 import { asyncHandler } from '../utils/http.js';
 import { authenticate } from '../middleware/auth.js';
+import { loginRateLimit } from '../middleware/loginRateLimit.js';
 
 export const authRouter = Router();
 
@@ -44,6 +45,7 @@ async function userProjects(userId: string) {
 
 authRouter.post(
   '/login',
+  loginRateLimit,
   asyncHandler(async (req, res) => {
     const { username, password } = z
       .object({ username: z.string().min(1), password: z.string().min(1) })
@@ -112,6 +114,34 @@ authRouter.post(
         sha256(refresh),
       ]);
     }
+    res.status(204).end();
+  })
+);
+
+// Self-service password change for any authenticated user (enables C1 remediation).
+authRouter.post(
+  '/change-password',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const { current_password, new_password } = z
+      .object({ current_password: z.string().min(1), new_password: z.string().min(8) })
+      .parse(req.body);
+    if (current_password === new_password) {
+      throw badRequest('New password must differ from the current one');
+    }
+    const { rows } = await query(`SELECT password_hash FROM users WHERE id = $1`, [req.user!.id]);
+    if (!rows[0] || !(await bcrypt.compare(current_password, rows[0].password_hash))) {
+      throw unauthorized('Current password is incorrect');
+    }
+    const hash = await bcrypt.hash(new_password, config.saltRounds);
+    await query(`UPDATE users SET password_hash = $2, updated_at = now() WHERE id = $1`, [
+      req.user!.id,
+      hash,
+    ]);
+    // Revoke other sessions so a changed password takes effect everywhere (M4 hardening).
+    await query(`UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`, [
+      req.user!.id,
+    ]);
     res.status(204).end();
   })
 );

@@ -90,6 +90,12 @@ usersRouter.patch(
       [req.params.id, req.user!.org_id, body.full_name ?? null, hash, body.is_org_admin ?? null, body.is_active ?? null]
     );
     if (!rows[0]) throw notFound('User not found');
+    // If the password was reset, revoke the target user's sessions (M4).
+    if (hash) {
+      await query(`UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`, [
+        req.params.id,
+      ]);
+    }
     audit(req, 'user.update', 'user', req.params.id, null, rows[0]);
     res.json(rows[0]);
   })

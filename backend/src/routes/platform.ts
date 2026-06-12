@@ -6,6 +6,7 @@ import { config } from '../config.js';
 import { query, withTransaction } from '../db.js';
 import { unauthorized, notFound } from '../errors.js';
 import { asyncHandler } from '../utils/http.js';
+import { loginRateLimit } from '../middleware/loginRateLimit.js';
 
 // Platform admin console: a layer above organizations. Tokens carry
 // { platform: true } and are NOT interchangeable with org-user tokens.
@@ -36,6 +37,7 @@ async function authenticatePlatform(req: Request, _res: Response, next: NextFunc
 
 platformRouter.post(
   '/auth/login',
+  loginRateLimit,
   asyncHandler(async (req, res) => {
     const { username, password } = z
       .object({ username: z.string().min(1), password: z.string().min(1) })

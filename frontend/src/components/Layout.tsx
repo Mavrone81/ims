@@ -2,6 +2,7 @@ import { NavLink, Outlet } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { useAuth, isManager } from '../auth';
 import { api } from '../api';
+import ChangePasswordModal from './ChangePasswordModal';
 
 interface ProjectOption {
   id: string;
@@ -13,6 +14,7 @@ export default function Layout() {
   const { user, role, activeProjectId, switchProject, logout } = useAuth();
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [navOpen, setNavOpen] = useState(false);
+  const [showChangePw, setShowChangePw] = useState(false);
 
   useEffect(() => {
     api<{ data: any[] }>('/projects')
@@ -72,10 +74,14 @@ export default function Layout() {
           <span className="user-chip">
             {user?.full_name} · {role ?? 'no role'}
           </span>
+          <button className="btn secondary sm" onClick={() => setShowChangePw(true)}>
+            Change password
+          </button>
           <button className="btn secondary sm" onClick={logout}>
             Sign out
           </button>
         </header>
+        {showChangePw && <ChangePasswordModal onClose={() => setShowChangePw(false)} />}
         <main className="content">
           <Outlet />
         </main>

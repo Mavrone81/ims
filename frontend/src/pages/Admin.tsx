@@ -355,11 +355,25 @@ function UsersTab() {
   const [show, setShow] = useState(false);
   const [form, setForm] = useState({ username: '', email: '', full_name: '', password: '', is_org_admin: false });
   const [error, setError] = useState('');
+  const [resetUser, setResetUser] = useState<any | null>(null);
+  const [resetPw, setResetPw] = useState('');
 
   const load = useCallback(() => {
     api<{ data: any[] }>('/users').then((r) => setUsers(r.data));
   }, []);
   useEffect(load, [load]);
+
+  async function doReset() {
+    if (resetPw.length < 8) return;
+    try {
+      await api(`/users/${resetUser.id}`, { method: 'PATCH', body: { password: resetPw } });
+      toast(`Password reset for ${resetUser.username} — their sessions were signed out`);
+      setResetUser(null);
+      setResetPw('');
+    } catch (err: any) {
+      toast(err.message ?? 'Reset failed', true);
+    }
+  }
 
   async function save() {
     try {
@@ -390,7 +404,10 @@ function UsersTab() {
                 <td>{u.is_org_admin ? <span className="badge blue">admin</span> : '—'}</td>
                 <td>{u.is_active ? <span className="badge green">active</span> : <span className="badge gray">inactive</span>}</td>
                 <td>{u.memberships.map((m: any) => `${m.project_name}: ${m.role}`).join(', ') || '—'}</td>
-                <td>
+                <td style={{ whiteSpace: 'nowrap' }}>
+                  <button className="btn ghost sm" onClick={() => { setResetPw(''); setResetUser(u); }}>
+                    Reset password
+                  </button>
                   {u.is_active && (
                     <button className="btn ghost sm" onClick={async () => {
                       if (!confirm(`Deactivate ${u.full_name}?`)) return;
@@ -425,6 +442,23 @@ function UsersTab() {
           <div className="modal-actions">
             <button className="btn secondary" onClick={() => setShow(false)}>Cancel</button>
             <button className="btn" disabled={!form.username || !form.full_name || form.password.length < 8} onClick={save}>Create</button>
+          </div>
+        </Modal>
+      )}
+
+      {resetUser && (
+        <Modal title={`Reset password — ${resetUser.username}`} onClose={() => setResetUser(null)}>
+          <p style={{ marginBottom: 14, color: 'var(--text-muted)' }}>
+            Set a new password for <strong>{resetUser.full_name}</strong>. Their active sessions will be signed out.
+          </p>
+          <div className="field">
+            <label>New password (min 8 chars)</label>
+            <input type="text" value={resetPw} onChange={(e) => setResetPw(e.target.value)} autoFocus
+              placeholder="Share this with the user securely" />
+          </div>
+          <div className="modal-actions">
+            <button className="btn secondary" onClick={() => setResetUser(null)}>Cancel</button>
+            <button className="btn" disabled={resetPw.length < 8} onClick={doReset}>Reset password</button>
           </div>
         </Modal>
       )}
