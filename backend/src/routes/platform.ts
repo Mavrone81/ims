@@ -9,6 +9,7 @@ import { asyncHandler } from '../utils/http.js';
 import { loginRateLimit } from '../middleware/loginRateLimit.js';
 import { seedTxnLabels } from './txnLabels.js';
 import { encryptField } from '../utils/crypto.js';
+import { KNOWN_CURRENCIES, currencyName } from '../utils/currencies.js';
 
 // Platform admin console: a layer above organizations. Tokens carry
 // { platform: true } and are NOT interchangeable with org-user tokens.
@@ -65,6 +66,14 @@ platformRouter.post(
 
 platformRouter.use(authenticatePlatform);
 
+// Known currencies for the base-currency picker.
+platformRouter.get(
+  '/currencies',
+  asyncHandler(async (_req, res) => {
+    res.json({ data: KNOWN_CURRENCIES });
+  })
+);
+
 platformRouter.get(
   '/orgs',
   asyncHandler(async (_req, res) => {
@@ -109,7 +118,7 @@ platformRouter.post(
 
     const result = await withTransaction(async (c) => {
       const cur = body.base_currency.toUpperCase();
-      await c.query(`INSERT INTO currencies (code, name) VALUES ($1, $2) ON CONFLICT (code) DO NOTHING`, [cur, cur]);
+      await c.query(`INSERT INTO currencies (code, name) VALUES ($1, $2) ON CONFLICT (code) DO NOTHING`, [cur, currencyName(cur)]);
       const org = (
         await c.query(`INSERT INTO organizations (name, base_currency) VALUES ($1, $2) RETURNING id, name`, [
           body.name, cur,
@@ -152,15 +161,27 @@ platformRouter.patch(
     const body = z
       .object({
         name: z.string().min(2).optional(),
+        base_currency: z.string().length(3).optional(),
         is_active: z.boolean().optional(),
         require_user_approval: z.boolean().optional(),
       })
       .parse(req.body);
+
+    const baseCurrency = body.base_currency?.toUpperCase() ?? null;
+    if (baseCurrency) {
+      // Make sure the chosen currency exists so the org can use it in reports/FX.
+      await query(`INSERT INTO currencies (code, name) VALUES ($1, $2) ON CONFLICT (code) DO NOTHING`, [
+        baseCurrency,
+        currencyName(baseCurrency),
+      ]);
+    }
+
     const { rows } = await query(
-      `UPDATE organizations SET name = COALESCE($2, name), is_active = COALESCE($3, is_active),
-              require_user_approval = COALESCE($4, require_user_approval), updated_at = now()
-       WHERE id = $1 RETURNING id, name, is_active, require_user_approval`,
-      [req.params.id, body.name ?? null, body.is_active ?? null, body.require_user_approval ?? null]
+      `UPDATE organizations SET name = COALESCE($2, name), base_currency = COALESCE($3, base_currency),
+              is_active = COALESCE($4, is_active),
+              require_user_approval = COALESCE($5, require_user_approval), updated_at = now()
+       WHERE id = $1 RETURNING id, name, base_currency, is_active, require_user_approval`,
+      [req.params.id, body.name ?? null, baseCurrency, body.is_active ?? null, body.require_user_approval ?? null]
     );
     if (!rows[0]) throw notFound('Organization not found');
     await query(

@@ -62,4 +62,24 @@ describe('platform admin', () => {
     expect(res.status).toBe(200);
     expect(res.body.require_user_approval).toBe(false);
   });
+
+  it('lists known currencies for the base-currency picker', async () => {
+    const pt = await platformToken();
+    const res = await request(app).get(`${API}/platform/currencies`).set('Authorization', `Bearer ${pt}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.length).toBeGreaterThan(10);
+    expect(res.body.data.some((c: any) => c.code === 'USD')).toBe(true);
+  });
+
+  it('edits a company profile (name + base currency) and ensures the currency exists', async () => {
+    const pt = await platformToken();
+    const res = await request(app).patch(`${API}/platform/orgs/${base.orgId}`)
+      .set('Authorization', `Bearer ${pt}`).send({ name: 'Renamed Co', base_currency: 'gbp' });
+    expect(res.status).toBe(200);
+    expect(res.body.name).toBe('Renamed Co');
+    expect(res.body.base_currency.trim()).toBe('GBP');
+    // the chosen currency was inserted so the org can use it
+    const cur = await pool.query(`SELECT 1 FROM currencies WHERE code = 'GBP'`);
+    expect(cur.rowCount).toBe(1);
+  });
 });

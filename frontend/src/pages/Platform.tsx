@@ -114,18 +114,32 @@ function PlatformLogin({ onLogin }: { onLogin: () => void }) {
   );
 }
 
+interface Currency { code: string; name: string }
+
 function PlatformConsole({ onLogout }: { onLogout: () => void }) {
   const toast = useToast();
   const [orgs, setOrgs] = useState<Org[]>([]);
+  const [currencies, setCurrencies] = useState<Currency[]>([]);
+  const [search, setSearch] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState<Record<string, any>>({});
   const [error, setError] = useState('');
   const [created, setCreated] = useState<{ name: string; admin_username: string } | null>(null);
+  const [editOrg, setEditOrg] = useState<Org | null>(null);
+  const [editForm, setEditForm] = useState<{ name: string; base_currency: string }>({ name: '', base_currency: 'USD' });
+  const [editError, setEditError] = useState('');
 
   const load = useCallback(() => {
     papi<{ data: Org[] }>('/orgs').then((r) => setOrgs(r.data)).catch(() => {});
   }, []);
   useEffect(load, [load]);
+  useEffect(() => {
+    papi<{ data: Currency[] }>('/currencies').then((r) => setCurrencies(r.data)).catch(() => {});
+  }, []);
+
+  const visibleOrgs = orgs.filter((o) =>
+    o.name.toLowerCase().includes(search.trim().toLowerCase())
+  );
 
   function openCreate() {
     setError('');
@@ -136,6 +150,32 @@ function PlatformConsole({ onLogout }: { onLogout: () => void }) {
     });
     setShowCreate(true);
   }
+
+  function openEdit(o: Org) {
+    setEditError('');
+    setEditForm({ name: o.name, base_currency: o.base_currency.trim() });
+    setEditOrg(o);
+  }
+
+  async function saveEdit() {
+    setEditError('');
+    try {
+      await papi(`/orgs/${editOrg!.id}`, { method: 'PATCH', body: editForm });
+      toast(`${editForm.name} updated`);
+      setEditOrg(null);
+      load();
+    } catch (err: any) {
+      setEditError(err.message ?? 'Update failed');
+    }
+  }
+
+  const currencyOptions = (
+    <>
+      {currencies.map((c) => (
+        <option key={c.code} value={c.code}>{c.code} — {c.name}</option>
+      ))}
+    </>
+  );
 
   async function create() {
     setError('');
@@ -177,6 +217,15 @@ function PlatformConsole({ onLogout }: { onLogout: () => void }) {
         <button className="btn secondary" onClick={onLogout}>Sign out</button>
       </div>
 
+      <div className="filters">
+        <input
+          type="search"
+          placeholder="Search companies…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </div>
+
       <div className="table-wrap">
         <table>
           <thead>
@@ -187,7 +236,10 @@ function PlatformConsole({ onLogout }: { onLogout: () => void }) {
             </tr>
           </thead>
           <tbody>
-            {orgs.map((o) => (
+            {visibleOrgs.length === 0 && (
+              <tr><td colSpan={9} className="empty">No companies match “{search}”.</td></tr>
+            )}
+            {visibleOrgs.map((o) => (
               <tr key={o.id}>
                 <td><strong>{o.name}</strong></td>
                 <td>{o.base_currency}</td>
@@ -203,7 +255,8 @@ function PlatformConsole({ onLogout }: { onLogout: () => void }) {
                       : <span className="badge gray">auto-approve</span>}
                   </button>
                 </td>
-                <td>
+                <td style={{ whiteSpace: 'nowrap' }}>
+                  <button className="btn ghost sm" onClick={() => openEdit(o)}>Edit</button>
                   <button className="btn ghost sm" onClick={() => toggleActive(o)}>
                     {o.is_active ? 'Deactivate' : 'Reactivate'}
                   </button>
@@ -220,8 +273,9 @@ function PlatformConsole({ onLogout }: { onLogout: () => void }) {
             <div className="field"><label>Company name *</label>
               <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
             <div className="field"><label>Base currency</label>
-              <input maxLength={3} value={form.base_currency}
-                onChange={(e) => setForm({ ...form, base_currency: e.target.value.toUpperCase() })} /></div>
+              <select value={form.base_currency} onChange={(e) => setForm({ ...form, base_currency: e.target.value })}>
+                {currencyOptions}
+              </select></div>
           </div>
           <div className="form-row">
             <div className="field"><label>Site code</label>
@@ -251,6 +305,24 @@ function PlatformConsole({ onLogout }: { onLogout: () => void }) {
               onClick={create}>
               Create company
             </button>
+          </div>
+        </Modal>
+      )}
+
+      {editOrg && (
+        <Modal title={`Edit ${editOrg.name}`} onClose={() => setEditOrg(null)}>
+          <div className="field"><label>Company name *</label>
+            <input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} autoFocus /></div>
+          <div className="field"><label>Base currency</label>
+            <select value={editForm.base_currency} onChange={(e) => setEditForm({ ...editForm, base_currency: e.target.value })}>
+              {currencyOptions}
+            </select>
+            <div className="help-text">Used for this company's valuation/ABC reports.</div>
+          </div>
+          {editError && <div className="error-text">{editError}</div>}
+          <div className="modal-actions">
+            <button className="btn secondary" onClick={() => setEditOrg(null)}>Cancel</button>
+            <button className="btn" disabled={editForm.name.trim().length < 2} onClick={saveEdit}>Save changes</button>
           </div>
         </Modal>
       )}
