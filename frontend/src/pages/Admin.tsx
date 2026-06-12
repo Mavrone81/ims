@@ -4,7 +4,7 @@ import { useAuth } from '../auth';
 import type { FieldDef, Lookup } from '../types';
 import { Modal, useToast } from '../components/ui';
 
-type Tab = 'fields' | 'categories' | 'structure' | 'users' | 'currency';
+type Tab = 'fields' | 'categories' | 'labels' | 'structure' | 'users' | 'currency';
 
 export default function Admin() {
   const { user } = useAuth();
@@ -17,12 +17,14 @@ export default function Admin() {
       <div className="tabs">
         <button className={tab === 'fields' ? 'active' : ''} onClick={() => setTab('fields')}>Custom fields</button>
         <button className={tab === 'categories' ? 'active' : ''} onClick={() => setTab('categories')}>Categories</button>
+        <button className={tab === 'labels' ? 'active' : ''} onClick={() => setTab('labels')}>Movement labels</button>
         {isAdmin && <button className={tab === 'structure' ? 'active' : ''} onClick={() => setTab('structure')}>Sites & Projects</button>}
         {isAdmin && <button className={tab === 'users' ? 'active' : ''} onClick={() => setTab('users')}>Users</button>}
         {isAdmin && <button className={tab === 'currency' ? 'active' : ''} onClick={() => setTab('currency')}>Currency & FX</button>}
       </div>
       {tab === 'fields' && <CustomFieldsTab />}
       {tab === 'categories' && <CategoriesTab />}
+      {tab === 'labels' && <MovementLabelsTab />}
       {tab === 'structure' && isAdmin && <StructureTab />}
       {tab === 'users' && isAdmin && <UsersTab />}
       {tab === 'currency' && isAdmin && <CurrencyTab />}
@@ -201,6 +203,124 @@ function CategoriesTab() {
           </tbody>
         </table>
       </div>
+    </>
+  );
+}
+
+/* ── Movement labels (admin + manager) ────────────────────────────── */
+const BASE_TYPES = [
+  { key: 'receipt', label: 'Receipt (stock in)' },
+  { key: 'issue', label: 'Issue (stock out)' },
+  { key: 'transfer', label: 'Transfer (between locations)' },
+  { key: 'adjustment', label: 'Adjustment (+/-)' },
+  { key: 'write_off', label: 'Write-off (stock out)' },
+];
+
+function MovementLabelsTab() {
+  const toast = useToast();
+  const [labels, setLabels] = useState<any[]>([]);
+  const [show, setShow] = useState(false);
+  const [form, setForm] = useState({ label: '', base_type: 'issue' });
+  const [editing, setEditing] = useState<any | null>(null);
+  const [editLabel, setEditLabel] = useState('');
+  const [error, setError] = useState('');
+
+  const load = useCallback(() => {
+    api<{ data: any[] }>('/txn-labels').then((r) => setLabels(r.data));
+  }, []);
+  useEffect(load, [load]);
+
+  async function add() {
+    try {
+      await api('/txn-labels', { method: 'POST', body: form });
+      toast('Label added');
+      setShow(false);
+      setForm({ label: '', base_type: 'issue' });
+      load();
+    } catch (err) {
+      setError(err instanceof ApiRequestError ? err.message : 'Failed');
+    }
+  }
+
+  async function rename() {
+    try {
+      await api(`/txn-labels/${editing.id}`, { method: 'PATCH', body: { label: editLabel } });
+      toast('Label renamed');
+      setEditing(null);
+      load();
+    } catch (err: any) {
+      toast(err.message ?? 'Failed', true);
+    }
+  }
+
+  async function remove(l: any) {
+    if (!confirm(`Remove the "${l.label}" label? Past movements keep their label.`)) return;
+    try {
+      await api(`/txn-labels/${l.id}`, { method: 'DELETE' });
+      toast('Label removed');
+      load();
+    } catch (err: any) {
+      toast(err.message ?? 'Failed', true);
+    }
+  }
+
+  const baseLabel = (k: string) => BASE_TYPES.find((b) => b.key === k)?.label ?? k;
+
+  return (
+    <>
+      <p style={{ color: 'var(--text-muted)', marginBottom: 12, maxWidth: 680 }}>
+        Rename the movement types your team sees (e.g. “Issue” → “Dispatch”) or add new ones.
+        Each label maps to a built-in behaviour so stock maths stay correct.
+      </p>
+      <div style={{ marginBottom: 14 }}>
+        <button className="btn" onClick={() => { setError(''); setShow(true); }}>+ Add label</button>
+      </div>
+      <div className="table-wrap">
+        <table>
+          <thead><tr><th>Label</th><th>Behaviour</th><th /></tr></thead>
+          <tbody>
+            {labels.map((l) => (
+              <tr key={l.id}>
+                <td><strong>{l.label}</strong></td>
+                <td><span className="badge gray">{baseLabel(l.base_type)}</span></td>
+                <td style={{ whiteSpace: 'nowrap' }}>
+                  <button className="btn ghost sm" onClick={() => { setEditLabel(l.label); setEditing(l); }}>Rename</button>
+                  <button className="btn ghost sm" onClick={() => remove(l)}>Remove</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {show && (
+        <Modal title="Add movement label" onClose={() => setShow(false)}>
+          <div className="field"><label>Label name *</label>
+            <input value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} placeholder="e.g. Dispatch" autoFocus /></div>
+          <div className="field"><label>Behaviour *</label>
+            <select value={form.base_type} onChange={(e) => setForm({ ...form, base_type: e.target.value })}>
+              {BASE_TYPES.map((b) => <option key={b.key} value={b.key}>{b.label}</option>)}
+            </select>
+            <div className="help-text">Determines how stock moves and which location fields appear.</div>
+          </div>
+          {error && <div className="error-text">{error}</div>}
+          <div className="modal-actions">
+            <button className="btn secondary" onClick={() => setShow(false)}>Cancel</button>
+            <button className="btn" disabled={!form.label.trim()} onClick={add}>Add label</button>
+          </div>
+        </Modal>
+      )}
+
+      {editing && (
+        <Modal title={`Rename "${editing.label}"`} onClose={() => setEditing(null)}>
+          <div className="field"><label>New name *</label>
+            <input value={editLabel} onChange={(e) => setEditLabel(e.target.value)} autoFocus /></div>
+          <div className="modal-actions">
+            <button className="btn secondary" onClick={() => setEditing(null)}>Cancel</button>
+            <button className="btn" disabled={!editLabel.trim()} onClick={rename}>Save</button>
+          </div>
+        </Modal>
+      )}
     </>
   );
 }

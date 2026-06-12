@@ -7,6 +7,7 @@ import { query, withTransaction } from '../db.js';
 import { unauthorized, notFound } from '../errors.js';
 import { asyncHandler } from '../utils/http.js';
 import { loginRateLimit } from '../middleware/loginRateLimit.js';
+import { seedTxnLabels } from './txnLabels.js';
 
 // Platform admin console: a layer above organizations. Tokens carry
 // { platform: true } and are NOT interchangeable with org-user tokens.
@@ -131,6 +132,7 @@ platformRouter.post(
           [org.id, body.admin_username, body.admin_email ?? null, body.admin_full_name, hash]
         )
       ).rows[0];
+      await seedTxnLabels(c, org.id);
       await c.query(
         `INSERT INTO audit_logs (org_id, action, entity_type, entity_id, after)
          VALUES ($1, 'platform.org_create', 'organization', $1, $2)`,

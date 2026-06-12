@@ -93,7 +93,7 @@ export default function Dashboard() {
                 {recent.map((t) => (
                   <tr key={t.id}>
                     <td>{fmtDate(t.performed_at)}</td>
-                    <td><TxnBadge type={t.type} /></td>
+                    <td><TxnBadge type={t.type} label={t.label} /></td>
                     <td><Link to={`/inventory/${t.item_id}`}>{t.item_no}</Link></td>
                     <td className="num">{t.quantity_delta > 0 ? `+${t.quantity_delta}` : t.quantity_delta}</td>
                     <td>{t.reference ?? '—'}</td>

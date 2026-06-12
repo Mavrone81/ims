@@ -50,9 +50,18 @@ export interface FieldDef {
   options: { value: string; label: string }[];
 }
 
+export interface TxnLabel {
+  id: string;
+  base_type: 'receipt' | 'issue' | 'transfer' | 'adjustment' | 'write_off';
+  label: string;
+  sort_order: number;
+  is_active: boolean;
+}
+
 export interface Txn {
   id: string;
   type: 'receipt' | 'issue' | 'adjustment' | 'transfer' | 'write_off' | 'opening';
+  label?: string | null;
   item_id: string;
   item_no?: string;
   item_description?: string;

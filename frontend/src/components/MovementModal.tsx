@@ -1,28 +1,21 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api, ApiRequestError } from '../api';
-import type { Item, Lookup } from '../types';
+import type { Item, Lookup, TxnLabel } from '../types';
 import { Modal, useToast } from './ui';
 
-type TxnType = 'receipt' | 'issue' | 'transfer' | 'adjustment' | 'write_off';
-const TYPES: { key: TxnType; label: string }[] = [
-  { key: 'receipt', label: 'Receipt' },
-  { key: 'issue', label: 'Issue' },
-  { key: 'transfer', label: 'Transfer' },
-  { key: 'adjustment', label: 'Adjust' },
-  { key: 'write_off', label: 'Write-off' },
-];
+type BaseType = 'receipt' | 'issue' | 'transfer' | 'adjustment' | 'write_off';
 
 interface Props {
   item: Item;
-  initialType?: TxnType;
   onClose: () => void;
   onSaved: () => void;
 }
 
-/** Single type-switching movement form (docs/05_UIUX §4.4). */
-export default function MovementModal({ item, initialType = 'issue', onClose, onSaved }: Props) {
+/** Type-switching movement form driven by the org's custom labels (docs/05_UIUX §4.4). */
+export default function MovementModal({ item, onClose, onSaved }: Props) {
   const toast = useToast();
-  const [type, setType] = useState<TxnType>(initialType);
+  const [labels, setLabels] = useState<TxnLabel[]>([]);
+  const [labelId, setLabelId] = useState('');
   const [qty, setQty] = useState(1);
   const [fromLoc, setFromLoc] = useState('');
   const [toLoc, setToLoc] = useState('');
@@ -34,24 +27,33 @@ export default function MovementModal({ item, initialType = 'issue', onClose, on
 
   useEffect(() => {
     api<{ data: Lookup[] }>('/locations').then((r) => setLocations(r.data));
+    api<{ data: TxnLabel[] }>('/txn-labels').then((r) => {
+      setLabels(r.data);
+      // default to the first "issue"-behaviour label, else the first label
+      const def = r.data.find((l) => l.base_type === 'issue') ?? r.data[0];
+      if (def) setLabelId(def.id);
+    });
   }, []);
+
+  const selected = labels.find((l) => l.id === labelId);
+  const baseType: BaseType | undefined = selected?.base_type;
 
   useEffect(() => {
     const def = item.default_location?.id ?? '';
     setFromLoc(def);
-    setToLoc(type === 'transfer' ? '' : def);
-  }, [type, item]);
+    setToLoc(baseType === 'transfer' ? '' : def);
+  }, [baseType, item]);
 
-  const needsFrom = type === 'issue' || type === 'write_off' || type === 'transfer';
-  const needsTo = type === 'receipt' || type === 'transfer' || type === 'adjustment';
+  const needsFrom = baseType === 'issue' || baseType === 'write_off' || baseType === 'transfer';
+  const needsTo = baseType === 'receipt' || baseType === 'transfer' || baseType === 'adjustment';
 
   const newBalance = useMemo(() => {
     const delta =
-      type === 'receipt' ? qty :
-      type === 'adjustment' ? qty :
-      type === 'transfer' ? 0 : -qty;
+      baseType === 'receipt' ? qty :
+      baseType === 'adjustment' ? qty :
+      baseType === 'transfer' ? 0 : -qty;
     return item.stock_on_hand + delta;
-  }, [type, qty, item.stock_on_hand]);
+  }, [baseType, qty, item.stock_on_hand]);
 
   async function submit() {
     setSaving(true);
@@ -60,7 +62,7 @@ export default function MovementModal({ item, initialType = 'issue', onClose, on
       await api('/transactions', {
         method: 'POST',
         body: {
-          type,
+          label_id: labelId,
           item_id: item.id,
           quantity: qty,
           from_location_id: needsFrom ? fromLoc || null : null,
@@ -69,7 +71,7 @@ export default function MovementModal({ item, initialType = 'issue', onClose, on
           reference: reference || null,
         },
       });
-      toast(`${TYPES.find((t) => t.key === type)?.label} recorded — on-hand ${item.stock_on_hand} → ${newBalance}`);
+      toast(`${selected?.label ?? 'Movement'} recorded — on-hand ${item.stock_on_hand} → ${newBalance}`);
       onSaved();
       onClose();
     } catch (err) {
@@ -94,30 +96,25 @@ export default function MovementModal({ item, initialType = 'issue', onClose, on
   return (
     <Modal title="Record movement" onClose={onClose}>
       <div className="type-tabs">
-        {TYPES.map((t) => (
-          <button key={t.key} className={type === t.key ? 'active' : ''} onClick={() => setType(t.key)}>
-            {t.label}
+        {labels.map((l) => (
+          <button key={l.id} className={labelId === l.id ? 'active' : ''} onClick={() => setLabelId(l.id)}>
+            {l.label}
           </button>
         ))}
       </div>
 
       <div className="balance-preview">
         {item.item_no} · {item.description} — on-hand <strong>{item.stock_on_hand}</strong>
-        {type !== 'transfer' && <> → <strong>{newBalance}</strong></>}
+        {baseType !== 'transfer' && <> → <strong>{newBalance}</strong></>}
       </div>
 
       <div className="field">
-        <label>Quantity{type === 'adjustment' ? ' (use negative to decrease)' : ''}</label>
-        <input
-          type="number"
-          value={qty}
-          step="any"
-          onChange={(e) => setQty(Number(e.target.value))}
-        />
+        <label>Quantity{baseType === 'adjustment' ? ' (use negative to decrease)' : ''}</label>
+        <input type="number" value={qty} step="any" onChange={(e) => setQty(Number(e.target.value))} />
       </div>
 
       {needsFrom && locSelect(fromLoc, setFromLoc, 'From location')}
-      {needsTo && locSelect(toLoc, setToLoc, type === 'adjustment' ? 'Location' : 'To location')}
+      {needsTo && locSelect(toLoc, setToLoc, baseType === 'adjustment' ? 'Location' : 'To location')}
 
       <div className="field">
         <label>Purpose</label>
@@ -133,7 +130,7 @@ export default function MovementModal({ item, initialType = 'issue', onClose, on
         <button className="btn secondary" onClick={onClose}>Cancel</button>
         <button
           className="btn"
-          disabled={saving || qty === 0 || (needsFrom && !fromLoc) || (needsTo && !toLoc)}
+          disabled={saving || !labelId || qty === 0 || (needsFrom && !fromLoc) || (needsTo && !toLoc)}
           onClick={submit}
         >
           {saving ? 'Saving…' : 'Confirm'}

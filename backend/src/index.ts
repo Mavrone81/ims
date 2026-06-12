@@ -17,6 +17,7 @@ import { usersRouter } from './routes/users.js';
 import { reportsRouter } from './routes/reports.js';
 import { auditRouter } from './routes/audit.js';
 import { platformRouter } from './routes/platform.js';
+import { txnLabelsRouter } from './routes/txnLabels.js';
 
 const app = express();
 app.set('trust proxy', true);
@@ -54,6 +55,7 @@ api.use('/items', authenticate, projectScope, itemsRouter);
 api.use('/transactions', authenticate, projectScope, transactionsRouter);
 api.use('/stock', authenticate, projectScope, stockRouter);
 api.use('/custom-fields', authenticate, projectScope, customFieldsRouter);
+api.use('/txn-labels', authenticate, projectScope, txnLabelsRouter);
 api.use('/categories', authenticate, projectScope, categoriesRouter);
 api.use('/suppliers', authenticate, projectScope, suppliersRouter);
 api.use('/reports', authenticate, projectScope, reportsRouter);

@@ -62,7 +62,7 @@ export default function Movements() {
               txns.map((t) => (
                 <tr key={t.id}>
                   <td>{fmtDate(t.performed_at)}</td>
-                  <td><TxnBadge type={t.type} />{t.reverses_txn_id && ' ↩'}</td>
+                  <td><TxnBadge type={t.type} label={t.label} />{t.reverses_txn_id && ' ↩'}</td>
                   <td><Link to={`/inventory/${t.item_id}`}>{t.item_no}</Link></td>
                   <td>{t.item_description}</td>
                   <td className="num">{t.quantity_delta > 0 ? `+${t.quantity_delta}` : t.quantity_delta}</td>

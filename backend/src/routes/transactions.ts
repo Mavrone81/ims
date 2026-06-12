@@ -11,7 +11,9 @@ import { audit } from '../utils/audit.js';
 export const transactionsRouter = Router();
 
 const txnBody = z.object({
-  type: z.enum(['receipt', 'issue', 'adjustment', 'transfer', 'write_off']),
+  // Either a built-in `type` or a custom `label_id` (which carries its base type).
+  type: z.enum(['receipt', 'issue', 'adjustment', 'transfer', 'write_off']).optional(),
+  label_id: z.string().uuid().optional(),
   item_id: z.string().uuid(),
   quantity: z.number().refine((n) => n !== 0, 'quantity must not be zero'),
   from_location_id: z.string().uuid().nullish(),
@@ -57,6 +59,21 @@ transactionsRouter.post(
     const body = txnBody.parse(req.body);
     const qty = Math.abs(body.quantity);
 
+    // Resolve the movement type + display label. A custom label_id carries its
+    // own base behaviour; otherwise fall back to the built-in `type`.
+    let type = body.type;
+    let labelText: string | null = null;
+    if (body.label_id) {
+      const lbl = await query(
+        `SELECT base_type, label FROM txn_labels WHERE id = $1 AND org_id = $2 AND is_active`,
+        [body.label_id, req.user!.org_id]
+      );
+      if (!lbl.rows[0]) throw badRequest('Unknown or inactive movement label');
+      type = lbl.rows[0].base_type;
+      labelText = lbl.rows[0].label;
+    }
+    if (!type) throw badRequest('Either type or label_id is required');
+
     const itemResult = await query(
       `SELECT id, unit_price, currency FROM items WHERE id = $1 AND project_id = $2 AND deleted_at IS NULL`,
       [body.item_id, req.projectId]
@@ -65,7 +82,7 @@ transactionsRouter.post(
     if (!item) throw notFound('Item not found in this project');
 
     // FR-2.6: write-offs above threshold need manager approval (role-gated here)
-    if (body.type === 'write_off') {
+    if (type === 'write_off') {
       const threshold =
         Number(req.projectSettings?.write_off_approval_threshold ?? config.writeOffApprovalThreshold);
       const value = qty * Number(body.unit_price ?? item.unit_price ?? 0);
@@ -81,7 +98,7 @@ transactionsRouter.post(
     let delta: number;
     let fromLoc = body.from_location_id ?? null;
     let toLoc = body.to_location_id ?? null;
-    switch (body.type) {
+    switch (type) {
       case 'receipt':
         if (!toLoc) throw badRequest('to_location_id is required for a receipt');
         fromLoc = null;
@@ -89,7 +106,7 @@ transactionsRouter.post(
         break;
       case 'issue':
       case 'write_off':
-        if (!fromLoc) throw badRequest(`from_location_id is required for ${body.type}`);
+        if (!fromLoc) throw badRequest(`from_location_id is required for ${type}`);
         toLoc = null;
         delta = -qty;
         break;
@@ -110,7 +127,7 @@ transactionsRouter.post(
 
     const txn = await withTransaction(async (client) => {
       // FR-2.5: block over-issue unless negative stock allowed
-      const outgoing = body.type === 'issue' || body.type === 'write_off' || body.type === 'transfer';
+      const outgoing = type === 'issue' || type === 'write_off' || type === 'transfer';
       if (outgoing && !allowNegative) {
         const available = await locationStock(client, body.item_id, fromLoc!);
         if (available < qty) {
@@ -119,7 +136,7 @@ transactionsRouter.post(
           );
         }
       }
-      if (body.type === 'adjustment' && delta < 0 && !allowNegative) {
+      if (type === 'adjustment' && delta < 0 && !allowNegative) {
         const available = await locationStock(client, body.item_id, toLoc!);
         if (available + delta < 0) {
           throw businessRule(`Adjustment would make stock negative (${available} on hand)`);
@@ -127,12 +144,12 @@ transactionsRouter.post(
       }
 
       const inserted = await client.query(
-        `INSERT INTO stock_transactions (project_id, item_id, type, quantity_delta, from_location_id,
+        `INSERT INTO stock_transactions (project_id, item_id, type, label, quantity_delta, from_location_id,
                                          to_location_id, unit_price, currency, purpose, reference,
                                          performed_by, performed_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, COALESCE($12, now())) RETURNING *`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12, COALESCE($13, now())) RETURNING *`,
         [
-          req.projectId, body.item_id, body.type, delta, fromLoc, toLoc,
+          req.projectId, body.item_id, type, labelText, delta, fromLoc, toLoc,
           body.unit_price ?? item.unit_price ?? null, body.currency ?? item.currency ?? null,
           body.purpose ?? null, body.reference ?? null, req.user!.id, body.performed_at ?? null,
         ]

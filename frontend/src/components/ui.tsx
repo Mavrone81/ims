@@ -11,8 +11,8 @@ const TXN_COLORS: Record<string, string> = {
   receipt: 'green', opening: 'blue', issue: 'amber', transfer: 'blue',
   adjustment: 'gray', write_off: 'red',
 };
-export function TxnBadge({ type }: { type: string }) {
-  return <span className={`badge ${TXN_COLORS[type] ?? 'gray'}`}>{type.replace('_', '-')}</span>;
+export function TxnBadge({ type, label }: { type: string; label?: string | null }) {
+  return <span className={`badge ${TXN_COLORS[type] ?? 'gray'}`}>{label || type.replace('_', '-')}</span>;
 }
 
 export function fmtMoney(n: number | null | undefined, currency?: string | null) {

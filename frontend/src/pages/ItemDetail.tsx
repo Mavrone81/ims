@@ -144,7 +144,7 @@ export default function ItemDetail() {
                 {txns.map((t) => (
                   <tr key={t.id}>
                     <td>{fmtDate(t.performed_at)}</td>
-                    <td><TxnBadge type={t.type} />{t.reverses_txn_id && ' ↩'}</td>
+                    <td><TxnBadge type={t.type} label={t.label} />{t.reverses_txn_id && ' ↩'}</td>
                     <td className="num">{t.quantity_delta > 0 ? `+${t.quantity_delta}` : t.quantity_delta}</td>
                     <td>{t.from_location_code ?? '—'}</td>
                     <td>{t.to_location_code ?? '—'}</td>
