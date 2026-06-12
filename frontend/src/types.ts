@@ -7,7 +7,8 @@ export interface ProjectMembership {
 
 export interface User {
   id: string;
-  email: string;
+  username: string;
+  email: string | null;
   full_name: string;
   is_org_admin: boolean;
   projects: ProjectMembership[];

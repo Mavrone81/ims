@@ -7,7 +7,7 @@ interface AuthState {
   loading: boolean;
   activeProjectId: string | null;
   role: 'admin' | 'manager' | 'technician' | 'viewer' | null;
-  login: (email: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<void>;
   logout: () => void;
   switchProject: (id: string) => void;
 }
@@ -51,10 +51,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  async function login(email: string, password: string) {
+  async function login(username: string, password: string) {
     const res = await api<{ access_token: string; refresh_token: string; user: User }>('/auth/login', {
       method: 'POST',
-      body: { email, password },
+      body: { username, password },
     });
     setTokens(res.access_token, res.refresh_token);
     setUser(res.user);

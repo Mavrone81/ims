@@ -15,7 +15,7 @@ usersRouter.get(
   '/',
   asyncHandler(async (req, res) => {
     const { rows } = await query(
-      `SELECT u.id, u.email, u.full_name, u.is_org_admin, u.is_active, u.last_login_at,
+      `SELECT u.id, u.username, u.email, u.full_name, u.is_org_admin, u.is_active, u.last_login_at,
               COALESCE(json_agg(json_build_object('project_id', pm.project_id, 'role', pm.role, 'project_name', p.name))
                        FILTER (WHERE pm.id IS NOT NULL), '[]') AS memberships
        FROM users u
@@ -34,7 +34,8 @@ usersRouter.post(
   asyncHandler(async (req, res) => {
     const body = z
       .object({
-        email: z.string().email(),
+        username: z.string().min(2).regex(/^[a-zA-Z0-9._-]+$/, 'letters, digits, . _ - only'),
+        email: z.string().email().nullish(),
         full_name: z.string().min(1),
         password: z.string().min(8),
         is_org_admin: z.boolean().optional().default(false),
@@ -48,9 +49,9 @@ usersRouter.post(
     const user = await withTransaction(async (client) => {
       const hash = await bcrypt.hash(body.password, config.saltRounds);
       const inserted = await client.query(
-        `INSERT INTO users (org_id, email, full_name, password_hash, is_org_admin)
-         VALUES ($1,$2,$3,$4,$5) RETURNING id, email, full_name, is_org_admin, is_active`,
-        [req.user!.org_id, body.email, body.full_name, hash, body.is_org_admin]
+        `INSERT INTO users (org_id, username, email, full_name, password_hash, is_org_admin)
+         VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, username, email, full_name, is_org_admin, is_active`,
+        [req.user!.org_id, body.username, body.email ?? null, body.full_name, hash, body.is_org_admin]
       );
       for (const m of body.memberships) {
         await client.query(
@@ -85,7 +86,7 @@ usersRouter.patch(
          is_active = COALESCE($6, is_active),
          updated_at = now()
        WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL
-       RETURNING id, email, full_name, is_org_admin, is_active`,
+       RETURNING id, username, email, full_name, is_org_admin, is_active`,
       [req.params.id, req.user!.org_id, body.full_name ?? null, hash, body.is_org_admin ?? null, body.is_active ?? null]
     );
     if (!rows[0]) throw notFound('User not found');

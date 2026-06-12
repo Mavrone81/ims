@@ -45,18 +45,18 @@ async function userProjects(userId: string) {
 authRouter.post(
   '/login',
   asyncHandler(async (req, res) => {
-    const { email, password } = z
-      .object({ email: z.string().email(), password: z.string().min(1) })
+    const { username, password } = z
+      .object({ username: z.string().min(1), password: z.string().min(1) })
       .parse(req.body);
 
     const { rows } = await query(
-      `SELECT id, org_id, email, full_name, password_hash, is_org_admin
-       FROM users WHERE email = $1 AND is_active AND deleted_at IS NULL`,
-      [email]
+      `SELECT id, org_id, username, email, full_name, password_hash, is_org_admin
+       FROM users WHERE username = $1 AND is_active AND deleted_at IS NULL`,
+      [username]
     );
     const user = rows[0];
     if (!user || !(await bcrypt.compare(password, user.password_hash))) {
-      throw unauthorized('Invalid email or password');
+      throw unauthorized('Invalid username or password');
     }
     await query('UPDATE users SET last_login_at = now() WHERE id = $1', [user.id]);
 
@@ -65,6 +65,7 @@ authRouter.post(
       refresh_token: await issueRefresh(user.id),
       user: {
         id: user.id,
+        username: user.username,
         email: user.email,
         full_name: user.full_name,
         is_org_admin: user.is_org_admin,
@@ -119,6 +120,7 @@ authRouter.get(
   asyncHandler(async (req, res) => {
     res.json({
       id: req.user!.id,
+      username: req.user!.username,
       email: req.user!.email,
       full_name: req.user!.full_name,
       is_org_admin: req.user!.is_org_admin,

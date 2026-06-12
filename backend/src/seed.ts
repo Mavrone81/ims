@@ -83,31 +83,23 @@ async function seed() {
     }
 
     const hash = (pw: string) => bcrypt.hash(pw, config.saltRounds);
-    const admin = (
-      await c.query(
-        `INSERT INTO users (org_id, email, full_name, password_hash, is_org_admin)
-         VALUES ($1,'admin@ims.local','Samuel (Admin)',$2,TRUE) RETURNING id`,
-        [org.id, await hash('admin123')]
-      )
-    ).rows[0];
-    const manager = (
-      await c.query(
-        `INSERT INTO users (org_id, email, full_name, password_hash)
-         VALUES ($1,'manager@ims.local','Mahesh (Manager)',$2) RETURNING id`,
-        [org.id, await hash('manager123')]
-      )
-    ).rows[0];
-    const tech = (
-      await c.query(
-        `INSERT INTO users (org_id, email, full_name, password_hash)
-         VALUES ($1,'tech@ims.local','Sara (Technician)',$2) RETURNING id`,
-        [org.id, await hash('tech123')]
-      )
-    ).rows[0];
+    const addUser = async (username: string, fullName: string, pw: string, isAdmin = false) =>
+      (
+        await c.query(
+          `INSERT INTO users (org_id, username, email, full_name, password_hash, is_org_admin)
+           VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+          [org.id, username, `${username}@ims.local`, fullName, await hash(pw), isAdmin]
+        )
+      ).rows[0];
+
+    const admin = await addUser('admin', 'Samuel (Admin)', 'admin123', true);
+    const manager = await addUser('manager', 'Mahesh (Manager)', 'manager123');
+    const tech = await addUser('tech', 'Sara (Technician)', 'tech123');
+    const auditor = await addUser('audit', 'Auditor (Viewer)', 'audit123');
     await c.query(
       `INSERT INTO project_members (project_id, user_id, role) VALUES
-       ($1,$2,'manager'), ($1,$3,'technician')`,
-      [project.id, manager.id, tech.id]
+       ($1,$2,'manager'), ($1,$3,'technician'), ($1,$4,'viewer')`,
+      [project.id, manager.id, tech.id, auditor.id]
     );
 
     // Custom fields on Solenoid Valves (FR-4.x)
@@ -208,9 +200,10 @@ async function seed() {
   });
 
   console.log('Seed complete.');
-  console.log('  admin@ims.local   / admin123   (org admin)');
-  console.log('  manager@ims.local / manager123 (project manager)');
-  console.log('  tech@ims.local    / tech123    (technician)');
+  console.log('  admin   / admin123   (org admin)');
+  console.log('  manager / manager123 (project manager)');
+  console.log('  tech    / tech123    (technician)');
+  console.log('  audit   / audit123   (viewer)');
   await pool.end();
 }
 

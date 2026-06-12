@@ -4,7 +4,7 @@ import { ApiRequestError } from '../api';
 
 export default function Login() {
   const { login } = useAuth();
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -14,7 +14,7 @@ export default function Login() {
     setBusy(true);
     setError('');
     try {
-      await login(email, password);
+      await login(username, password);
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.message : 'Login failed');
     } finally {
@@ -28,8 +28,14 @@ export default function Login() {
         <h1>IMS</h1>
         <p>Inventory Management System — sign in to continue</p>
         <div className="field">
-          <label>Email</label>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus required />
+          <label>Username</label>
+          <input
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            autoComplete="username"
+            autoFocus
+            required
+          />
         </div>
         <div className="field">
           <label>Password</label>

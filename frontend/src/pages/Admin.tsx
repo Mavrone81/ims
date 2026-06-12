@@ -353,7 +353,7 @@ function UsersTab() {
   const toast = useToast();
   const [users, setUsers] = useState<any[]>([]);
   const [show, setShow] = useState(false);
-  const [form, setForm] = useState({ email: '', full_name: '', password: '', is_org_admin: false });
+  const [form, setForm] = useState({ username: '', email: '', full_name: '', password: '', is_org_admin: false });
   const [error, setError] = useState('');
 
   const load = useCallback(() => {
@@ -363,10 +363,10 @@ function UsersTab() {
 
   async function save() {
     try {
-      await api('/users', { method: 'POST', body: form });
+      await api('/users', { method: 'POST', body: { ...form, email: form.email || null } });
       toast('User created');
       setShow(false);
-      setForm({ email: '', full_name: '', password: '', is_org_admin: false });
+      setForm({ username: '', email: '', full_name: '', password: '', is_org_admin: false });
       load();
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.message : 'Failed');
@@ -380,12 +380,13 @@ function UsersTab() {
       </div>
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Name</th><th>Email</th><th>Org admin</th><th>Active</th><th>Memberships</th><th /></tr></thead>
+          <thead><tr><th>Username</th><th>Name</th><th>Email</th><th>Org admin</th><th>Active</th><th>Memberships</th><th /></tr></thead>
           <tbody>
             {users.map((u) => (
               <tr key={u.id}>
-                <td><strong>{u.full_name}</strong></td>
-                <td>{u.email}</td>
+                <td><strong>{u.username}</strong></td>
+                <td>{u.full_name}</td>
+                <td>{u.email ?? '—'}</td>
                 <td>{u.is_org_admin ? <span className="badge blue">admin</span> : '—'}</td>
                 <td>{u.is_active ? <span className="badge green">active</span> : <span className="badge gray">inactive</span>}</td>
                 <td>{u.memberships.map((m: any) => `${m.project_name}: ${m.role}`).join(', ') || '—'}</td>
@@ -406,9 +407,11 @@ function UsersTab() {
 
       {show && (
         <Modal title="New user" onClose={() => setShow(false)}>
+          <div className="field"><label>Username * (login name)</label>
+            <input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} /></div>
           <div className="field"><label>Full name *</label>
             <input value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} /></div>
-          <div className="field"><label>Email *</label>
+          <div className="field"><label>Email (optional)</label>
             <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
           <div className="field"><label>Password * (min 8 chars)</label>
             <input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} /></div>
@@ -421,7 +424,7 @@ function UsersTab() {
           {error && <div className="error-text">{error}</div>}
           <div className="modal-actions">
             <button className="btn secondary" onClick={() => setShow(false)}>Cancel</button>
-            <button className="btn" disabled={!form.email || !form.full_name || form.password.length < 8} onClick={save}>Create</button>
+            <button className="btn" disabled={!form.username || !form.full_name || form.password.length < 8} onClick={save}>Create</button>
           </div>
         </Modal>
       )}

@@ -37,13 +37,16 @@ npm install
 npm run dev                          # UI on http://localhost:5173 (proxies /api)
 ```
 
-### Demo accounts (seeded)
+### Demo accounts (seeded — login by username)
 
-| Email | Password | Role |
+| Username | Password | Role |
 |---|---|---|
-| `admin@ims.local` | `admin123` | Organization admin |
-| `manager@ims.local` | `manager123` | Manager on Maintenance-CNW |
-| `tech@ims.local` | `tech123` | Technician on Maintenance-CNW |
+| `admin` | `admin123` | Organization admin |
+| `manager` | `manager123` | Manager on Maintenance-CNW |
+| `tech` | `tech123` | Technician on Maintenance-CNW |
+| `audit` | `audit123` | Viewer/auditor on Maintenance-CNW |
+
+See [`docs/06_LOGIN.md`](docs/06_LOGIN.md) for the user-facing login guide.
 
 ## What's implemented
 
@@ -92,7 +95,7 @@ project-scoped endpoints also need `X-Project-Id: <uuid>`.
 curl -s localhost:4000/api/v1/health
 TOKEN=$(curl -s -X POST localhost:4000/api/v1/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"email":"admin@ims.local","password":"admin123"}' | jq -r .access_token)
+  -d '{"username":"admin","password":"admin123"}' | jq -r .access_token)
 ```
 
 ## Production deployment (CI/CD)

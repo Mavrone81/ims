@@ -10,7 +10,8 @@ const ROLE_RANK: Record<ProjectRole, number> = { viewer: 1, technician: 2, manag
 export interface AuthUser {
   id: string;
   org_id: string;
-  email: string;
+  username: string;
+  email: string | null;
   full_name: string;
   is_org_admin: boolean;
 }
@@ -39,7 +40,7 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
       throw unauthorized('Invalid or expired access token');
     }
     const { rows } = await query(
-      `SELECT id, org_id, email, full_name, is_org_admin FROM users
+      `SELECT id, org_id, username, email, full_name, is_org_admin FROM users
        WHERE id = $1 AND is_active AND deleted_at IS NULL`,
       [payload.sub]
     );
