@@ -32,7 +32,7 @@ api.get('/health', async (_req, res) => {
   } catch {
     db = 'error';
   }
-  res.status(db === 'ok' ? 200 : 503).json({ status: db === 'ok' ? 'ok' : 'degraded', db, version: '1.0.0' });
+  res.status(db === 'ok' ? 200 : 503).json({ status: db === 'ok' ? 'ok' : 'degraded', db, version: '1.0.1' });
 });
 
 api.use('/auth', authRouter);
