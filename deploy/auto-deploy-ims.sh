@@ -51,6 +51,19 @@ echo "$(ts) $TAG changed files:"; printf '%s\n' "$CHANGED" | sed 's/^/    /'
 #     Uses only the check-runs API (where GitHub Actions reports); no token
 #     needed for a public repo. Never deploys on failure or while pending.
 REPO_SLUG=Mavrone81/ims
+# Throttle API calls: at most once per 180s per commit. Cron runs every minute,
+# and GitHub's UNauthenticated limit is only 60 req/hour — without this, a long
+# CI wait exhausts the quota and the gate can never read "success".
+STATE_FILE=/root/.ims-ci-state
+MIN_INTERVAL=180
+now=$(date +%s)
+last_sha=""; last_ts=0
+[ -f "$STATE_FILE" ] && read -r last_sha last_ts _ < "$STATE_FILE" 2>/dev/null
+if [ "$last_sha" = "$REMOTE" ] && [ $((now - last_ts)) -lt "$MIN_INTERVAL" ]; then
+  echo "$(ts) $TAG CI check throttled (last $((now - last_ts))s ago) — will retry next run"; exit 0
+fi
+echo "$REMOTE $now checked" > "$STATE_FILE"
+
 runs=$(curl -fsSL -H 'Accept: application/vnd.github+json' \
        "https://api.github.com/repos/$REPO_SLUG/commits/$REMOTE/check-runs" 2>/dev/null)
 total=$(printf '%s' "$runs" | grep -c '"conclusion"')
