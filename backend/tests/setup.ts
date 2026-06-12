@@ -11,6 +11,9 @@ process.env.RATE_LIMIT_MAX = process.env.RATE_LIMIT_MAX ?? '100000';
 process.env.PASSWORD_SALT_ROUNDS = '4';
 process.env.JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET ?? 'test_access_secret';
 process.env.JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET ?? 'test_refresh_secret';
+// Exercise the real column-encryption path in tests (fixed 32-byte key).
+process.env.FIELD_ENCRYPTION_KEY =
+  process.env.FIELD_ENCRYPTION_KEY ?? '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff';
 
 beforeAll(() => {
   // marker hook so Vitest loads this file

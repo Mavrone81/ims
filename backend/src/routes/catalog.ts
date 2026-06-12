@@ -5,6 +5,7 @@ import { notFound } from '../errors.js';
 import { asyncHandler } from '../utils/http.js';
 import { requireRole, requireOrgAdmin } from '../middleware/auth.js';
 import { audit } from '../utils/audit.js';
+import { encryptField, decryptSupplier } from '../utils/crypto.js';
 
 // Categories, suppliers, currencies, exchange rates (docs/04_API.md §7)
 export const categoriesRouter = Router();
@@ -85,7 +86,7 @@ suppliersRouter.get(
       `SELECT * FROM suppliers WHERE org_id = $1 AND deleted_at IS NULL ORDER BY name`,
       [req.user!.org_id]
     );
-    res.json({ data: rows });
+    res.json({ data: rows.map(decryptSupplier) });
   })
 );
 
@@ -97,9 +98,12 @@ suppliersRouter.get(
       [req.params.id, req.user!.org_id]
     );
     if (!rows[0]) throw notFound('Supplier not found');
-    res.json(rows[0]);
+    res.json(decryptSupplier(rows[0]));
   })
 );
+
+// Encrypted contact PII fields (stored as ciphertext at rest).
+const ENCRYPTED_SUPPLIER_FIELDS = new Set(['contact_name', 'email', 'phone']);
 
 suppliersRouter.post(
   '/',
@@ -109,11 +113,11 @@ suppliersRouter.post(
     const { rows } = await query(
       `INSERT INTO suppliers (org_id, name, contact_name, email, phone, lead_time_days, currency)
        VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-      [req.user!.org_id, body.name, body.contact_name ?? null, body.email ?? null,
-       body.phone ?? null, body.lead_time_days ?? null, body.currency ?? null]
+      [req.user!.org_id, body.name, encryptField(body.contact_name ?? null), encryptField(body.email ?? null),
+       encryptField(body.phone ?? null), body.lead_time_days ?? null, body.currency ?? null]
     );
-    audit(req, 'supplier.create', 'supplier', rows[0].id, null, rows[0]);
-    res.status(201).json(rows[0]);
+    audit(req, 'supplier.create', 'supplier', rows[0].id, null, rows[0]); // ciphertext
+    res.status(201).json(decryptSupplier(rows[0]));
   })
 );
 
@@ -127,16 +131,18 @@ suppliersRouter.patch(
       const { rows } = await query(`SELECT * FROM suppliers WHERE id = $1 AND org_id = $2`, [
         req.params.id, req.user!.org_id,
       ]);
-      return res.json(rows[0]);
+      return res.json(rows[0] ? decryptSupplier(rows[0]) : rows[0]);
     }
     const sets = cols.map((c, i) => `${c} = $${i + 3}`).join(', ');
     const { rows } = await query(
       `UPDATE suppliers SET ${sets}, updated_at = now()
        WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL RETURNING *`,
-      [req.params.id, req.user!.org_id, ...cols.map((c) => body[c] ?? null)]
+      [req.params.id, req.user!.org_id, ...cols.map((c) =>
+        ENCRYPTED_SUPPLIER_FIELDS.has(c as string) ? encryptField((body[c] as string) ?? null) : (body[c] ?? null)
+      )]
     );
     if (!rows[0]) throw notFound('Supplier not found');
-    res.json(rows[0]);
+    res.json(decryptSupplier(rows[0]));
   })
 );
 

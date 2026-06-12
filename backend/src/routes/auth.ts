@@ -9,6 +9,7 @@ import { unauthorized, badRequest, forbidden, notFound, conflict } from '../erro
 import { asyncHandler } from '../utils/http.js';
 import { authenticate } from '../middleware/auth.js';
 import { loginRateLimit } from '../middleware/loginRateLimit.js';
+import { encryptField, decryptField } from '../utils/crypto.js';
 
 export const authRouter = Router();
 
@@ -78,7 +79,7 @@ authRouter.post(
       user: {
         id: user.id,
         username: user.username,
-        email: user.email,
+        email: decryptField(user.email),
         full_name: user.full_name,
         is_org_admin: user.is_org_admin,
         projects: await userProjects(user.id),
@@ -167,7 +168,7 @@ authRouter.post(
         `INSERT INTO users (org_id, username, email, full_name, password_hash,
                             is_org_admin, self_registered, approval_status)
          VALUES ($1, $2, $3, $4, $5, FALSE, TRUE, $6)`,
-        [body.org_id, body.username, body.email ?? null, body.full_name, hash, status]
+        [body.org_id, body.username, encryptField(body.email ?? null), body.full_name, hash, status]
       );
     } catch (err: any) {
       if (err?.code === '23505') throw conflict('That username is already taken');
@@ -218,7 +219,7 @@ authRouter.get(
     res.json({
       id: req.user!.id,
       username: req.user!.username,
-      email: req.user!.email,
+      email: decryptField(req.user!.email),
       full_name: req.user!.full_name,
       is_org_admin: req.user!.is_org_admin,
       projects: await userProjects(req.user!.id),

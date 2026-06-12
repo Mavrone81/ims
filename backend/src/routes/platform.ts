@@ -8,6 +8,7 @@ import { unauthorized, notFound } from '../errors.js';
 import { asyncHandler } from '../utils/http.js';
 import { loginRateLimit } from '../middleware/loginRateLimit.js';
 import { seedTxnLabels } from './txnLabels.js';
+import { encryptField } from '../utils/crypto.js';
 
 // Platform admin console: a layer above organizations. Tokens carry
 // { platform: true } and are NOT interchangeable with org-user tokens.
@@ -129,7 +130,7 @@ platformRouter.post(
         await c.query(
           `INSERT INTO users (org_id, username, email, full_name, password_hash, is_org_admin)
            VALUES ($1, $2, $3, $4, $5, TRUE) RETURNING id, username`,
-          [org.id, body.admin_username, body.admin_email ?? null, body.admin_full_name, hash]
+          [org.id, body.admin_username, encryptField(body.admin_email ?? null), body.admin_full_name, hash]
         )
       ).rows[0];
       await seedTxnLabels(c, org.id);
@@ -189,7 +190,7 @@ platformRouter.post(
     const { rows } = await query(
       `INSERT INTO users (org_id, username, email, full_name, password_hash, is_org_admin)
        VALUES ($1, $2, $3, $4, $5, TRUE) RETURNING id, username, full_name`,
-      [req.params.id, body.username, body.email ?? null, body.full_name, hash]
+      [req.params.id, body.username, encryptField(body.email ?? null), body.full_name, hash]
     );
     res.status(201).json(rows[0]);
   })

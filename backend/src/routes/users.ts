@@ -7,6 +7,7 @@ import { notFound } from '../errors.js';
 import { asyncHandler } from '../utils/http.js';
 import { requireOrgAdmin } from '../middleware/auth.js';
 import { audit } from '../utils/audit.js';
+import { encryptField, decryptUser } from '../utils/crypto.js';
 
 export const usersRouter = Router();
 usersRouter.use(requireOrgAdmin);
@@ -26,7 +27,7 @@ usersRouter.get(
        GROUP BY u.id ORDER BY u.full_name`,
       [req.user!.org_id]
     );
-    res.json({ data: rows });
+    res.json({ data: rows.map(decryptUser) });
   })
 );
 
@@ -52,7 +53,7 @@ usersRouter.post(
       const inserted = await client.query(
         `INSERT INTO users (org_id, username, email, full_name, password_hash, is_org_admin)
          VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, username, email, full_name, is_org_admin, is_active`,
-        [req.user!.org_id, body.username, body.email ?? null, body.full_name, hash, body.is_org_admin]
+        [req.user!.org_id, body.username, encryptField(body.email ?? null), body.full_name, hash, body.is_org_admin]
       );
       for (const m of body.memberships) {
         await client.query(
@@ -62,8 +63,8 @@ usersRouter.post(
       }
       return inserted.rows[0];
     });
-    audit(req, 'user.create', 'user', user.id, null, user);
-    res.status(201).json(user);
+    audit(req, 'user.create', 'user', user.id, null, user); // stores ciphertext (synchronous stringify)
+    res.status(201).json(decryptUser(user));
   })
 );
 
@@ -98,7 +99,7 @@ usersRouter.patch(
       ]);
     }
     audit(req, 'user.update', 'user', req.params.id, null, rows[0]);
-    res.json(rows[0]);
+    res.json(decryptUser(rows[0]));
   })
 );
 
