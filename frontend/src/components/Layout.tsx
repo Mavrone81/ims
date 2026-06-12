@@ -12,6 +12,7 @@ interface ProjectOption {
 export default function Layout() {
   const { user, role, activeProjectId, switchProject, logout } = useAuth();
   const [projects, setProjects] = useState<ProjectOption[]>([]);
+  const [navOpen, setNavOpen] = useState(false);
 
   useEffect(() => {
     api<{ data: any[] }>('/projects')
@@ -19,11 +20,14 @@ export default function Layout() {
       .catch(() => {});
   }, [user]);
 
+  const closeNav = () => setNavOpen(false);
+
   return (
     <div className="app">
-      <aside className="sidebar">
+      {navOpen && <div className="nav-backdrop" onClick={closeNav} aria-hidden="true" />}
+      <aside className={`sidebar${navOpen ? ' open' : ''}`}>
         <div className="brand">IMS</div>
-        <nav>
+        <nav onClick={closeNav}>
           <NavLink to="/" end>Dashboard</NavLink>
           <NavLink to="/inventory">Inventory</NavLink>
           <NavLink to="/movements">Movements</NavLink>
@@ -39,6 +43,14 @@ export default function Layout() {
       </aside>
       <div className="main">
         <header className="topbar">
+          <button
+            className="hamburger"
+            aria-label={navOpen ? 'Close menu' : 'Open menu'}
+            aria-expanded={navOpen}
+            onClick={() => setNavOpen((o) => !o)}
+          >
+            ☰
+          </button>
           <select
             value={activeProjectId ?? ''}
             onChange={(e) => {
