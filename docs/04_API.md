@@ -315,7 +315,17 @@ All reports accept `?format=json|xlsx|csv`.
 
 ## 14. System
 `GET /health` → `{ "status": "ok", "db": "ok", "redis": "ok", "version": "1.0.0" }`
-`GET /me/notifications` → in-app alerts (low stock, pending approvals)
+`GET /me/notifications` (requires `X-Project-Id`) → in-app alerts for the active project: low-stock items, plus users awaiting approval (org admins only). Only non-zero alerts are returned.
+
+```json
+{
+  "data": [
+    { "type": "low_stock", "severity": "warning", "count": 3, "message": "3 items at or below reorder level", "link": "/reports/reorder" },
+    { "type": "pending_approval", "severity": "info", "count": 1, "message": "1 user awaiting approval", "link": "/admin/users" }
+  ],
+  "total": 4
+}
+```
 
 ---
 
