@@ -7,16 +7,25 @@
 **Auth:** Bearer JWT (access token) in `Authorization` header
 **Companion to:** `01_PRD.md`, `02_DATABASE.md`
 
+> **As-built note (reconciled 2026-06-14).** This spec is kept in sync with the
+> running implementation. Sign-in is by **username**, not email (see §2). Two
+> token families exist — org-user tokens and platform-admin tokens — and they
+> are **not** interchangeable. Sections marked **`[deferred]`** describe designed
+> endpoints that are not yet implemented (attachments, OpenAPI/Swagger, `xlsx`
+> export); the rest is live.
+
 ---
 
 ## 1. Conventions
 
 ### 1.1 Authentication
-All endpoints except `/auth/*` and `/health` require:
+All endpoints except `/auth/*`, `/platform/auth/login`, and `/health` require:
 ```
 Authorization: Bearer <access_token>
 ```
 Access tokens are short-lived (15 min); use `/auth/refresh` to obtain new ones.
+Org-user tokens are rejected on `/platform/*` and platform tokens are rejected
+on org APIs (401 both ways).
 
 ### 1.2 Project scoping
 Most resources are project-scoped. Pass the active project via header:
@@ -78,26 +87,64 @@ Responses wrap collections:
 
 ## 2. Auth
 
+Sign-in uses a **username** (email is optional contact PII, encrypted at rest).
+The same "Invalid username or password" message is returned for both an unknown
+user and a wrong password (no account enumeration). Repeated failures for one
+username are rate-limited/locked out.
+
 ### POST `/auth/login`
 ```json
 // request
-{ "email": "sam@example.com", "password": "••••••" }
+{ "username": "manager", "password": "••••••" }
 // 200
 {
   "access_token": "eyJ...",
   "refresh_token": "eyJ...",
-  "user": { "id": "...", "full_name": "Samuel", "is_org_admin": false,
-            "projects": [ { "project_id": "...", "role": "manager" } ] }
+  "user": { "id": "...", "username": "manager", "email": null, "full_name": "Samuel",
+            "is_org_admin": false,
+            "projects": [ { "project_id": "...", "role": "manager",
+                            "project_name": "Maintenance-CNW", "project_code": "Maintenance-CNW" } ] }
 }
+// 403 if the account is awaiting approval or was rejected (self-registration)
 ```
+Login also fails (401) if the user's organization is deactivated.
 
 ### POST `/auth/refresh`
 ```json
 { "refresh_token": "eyJ..." }  // -> { "access_token": "...", "refresh_token": "..." }
 ```
+Refresh tokens **rotate**: the presented token is revoked and a new pair issued.
+Revoked/expired tokens return 401.
 
-### POST `/auth/logout` → 204  (revokes refresh token)
-### GET `/auth/me` → current user + project memberships
+### POST `/auth/logout` → 204  (revokes the supplied refresh token)
+### GET `/auth/me` → current user (id, username, email, full_name, is_org_admin) + project memberships
+
+### POST `/auth/change-password`  (any authenticated user)
+```json
+{ "current_password": "••••••", "new_password": "••••••" }  // 204
+```
+On success, all of the user's **other** refresh tokens are revoked (sign-out
+elsewhere). 400 if new == current; 401 if the current password is wrong.
+
+### Self-service registration
+
+### GET `/auth/companies` → public list of active companies to register against
+```json
+{ "data": [ { "id": "...", "name": "CNW" } ] }
+```
+
+### POST `/auth/register`  (public)
+```json
+// request
+{ "org_id": "...", "username": "jdoe", "full_name": "J. Doe",
+  "email": "j@example.com", "password": "••••••••" }
+// 201 — message + status
+{ "status": "pending", "message": "Registration submitted. An administrator must approve…" }
+```
+Creates a non-admin user in the chosen company. If the company has
+`require_user_approval` on, the account is `pending` and cannot sign in until an
+org admin approves it (see §9); otherwise it is usable immediately. 409 if the
+username is taken; `username` allows letters, digits, `. _ -`.
 
 ---
 
@@ -231,6 +278,11 @@ Creates a reversing entry (ledger stays immutable). Body: `{ "reason": "wrong it
 
 ## 6. Custom fields (admin/manager)
 
+Project-scoped routes (require `X-Project-Id`), but field defs are org-wide.
+`key` must be lowercase `snake_case`. A def with `category_id: null` applies to
+all categories; `GET ?category_id=` returns that category's fields **plus** the
+global ones.
+
 ### GET `/custom-fields?category_id=...` → field definitions for a category
 ### POST `/custom-fields`  (manager+)
 ```json
@@ -275,18 +327,50 @@ Creates a reversing entry (ledger stays immutable). Body: `{ "reason": "wrong it
 ---
 
 ## 9. Users  (org admin)
-`GET /users` · `POST /users` (invite) · `PATCH /users/{id}` · `DELETE /users/{id}` (deactivate)
+`GET /users` · `POST /users` · `PATCH /users/{id}` · `DELETE /users/{id}` (deactivate)
+`POST /users/{id}/approve` · `POST /users/{id}/reject` — resolve a pending self-registration.
 ```json
-// POST /users
-{ "email":"tech@example.com", "full_name":"A. Technician",
+// POST /users  (admin-created users are auto-approved; password is set directly)
+{ "username":"atech", "password":"••••••••", "full_name":"A. Technician",
+  "email":"tech@example.com", "is_org_admin": false,
   "memberships": [ { "project_id":"...", "role":"technician" } ] }
 ```
+`GET /users` returns each user's `approval_status`, `self_registered`, `is_active`
+and memberships. `PATCH` can set `full_name`, `password` (resets sessions),
+`is_org_admin`, `is_active`. `email` is stored encrypted; the API returns it
+decrypted. `DELETE` deactivates (no hard delete) and revokes the user's sessions.
 
 ---
 
 ## 10. Purchase orders (lightweight)
-`GET /purchase-orders` · `POST /purchase-orders` · `GET /purchase-orders/{id}` · `PATCH /purchase-orders/{id}`
-`POST /purchase-orders/{id}/receive` → records receipts, generating `receipt` transactions for received lines.
+Project-scoped (require `X-Project-Id`). Reads are open to any member; create /
+update / receive are **technician+** (a PO is an operational document like a
+receipt). A PO carries header fields plus one or more lines.
+
+`GET /purchase-orders?status=&supplier_id=&page=&page_size=` → paginated list,
+each row with `supplier_name`, `line_count`, `total_value` (Σ qty_ordered × unit_price).
+`GET /purchase-orders/{id}` → PO header + `lines` (item_no, description,
+qty_ordered, qty_received, unit_price).
+```json
+// POST /purchase-orders  (technician+)
+{ "supplier_id":"...", "po_number":"PO-2026-014", "currency":"SGD",
+  "status":"draft", "ordered_at":"2026-06-01", "expected_at":"2026-06-20",
+  "lines": [ { "item_id":"...", "qty_ordered": 5, "unit_price": 240 } ] }
+// 201 -> created PO with lines.  409 if po_number already exists in the project.
+```
+`PATCH /purchase-orders/{id}` (technician+) → update header (`po_number`, `status`,
+`currency`, `ordered_at`, `expected_at`).
+```json
+// POST /purchase-orders/{id}/receive  (technician+)
+{ "reference":"DN-5567",
+  "lines": [ { "line_id":"...", "qty": 3, "to_location_id":"..." } ] }
+```
+Receiving posts a `receipt` `stock_transaction` per line (so on-hand stays
+derived from the ledger), increments `qty_received`, and advances the PO status
+to `partial` or `received`. `to_location_id` is optional — it falls back to the
+line item's `default_location_id` (400 if neither is set). Over-receipt beyond a
+line's outstanding quantity is blocked (422); receiving against a `cancelled` PO
+is blocked (422).
 
 ---
 
@@ -296,25 +380,30 @@ Creates a reversing entry (ledger stays immutable). Body: `{ "reason": "wrong it
 `GET /reports/reorder` → low-stock list.
 `GET /reports/abc` → ABC classification breakdown.
 `GET /reports/write-offs?date_from=...&date_to=...`
-All reports accept `?format=json|xlsx|csv`.
+All reports accept `?format=json|csv` (`xlsx` is **`[deferred]`**). Valuation and
+ABC convert to a base currency using the latest `exchange_rates` row effective
+on/before `as_of`; items whose currency has no rate to base show `value_base: null`.
+Reports are project-scoped (require `X-Project-Id`).
 
 ---
 
-## 12. Attachments
-`POST /items/{id}/attachments` (multipart) → upload datasheet/photo, 201
-`GET /items/{id}/attachments` → list
-`GET /attachments/{id}/download` → presigned URL / stream
-`DELETE /attachments/{id}` (manager+) → 204
+## 12. Attachments  **`[deferred]`**
+Designed but **not yet implemented** (no object storage wired). The `attachments`
+table exists. Planned surface: `POST/GET /items/{id}/attachments`,
+`GET /attachments/{id}/download`, `DELETE /attachments/{id}`.
 
 ---
 
 ## 13. Audit
-`GET /audit-logs?entity_type=item&entity_id=...&user_id=...&date_from=...` (manager+) → immutable change history.
+`GET /audit-logs?entity_type=item&entity_id=...&user_id=...&date_from=...&date_to=...`
+(manager+, requires `X-Project-Id`) → immutable change history for the caller's org,
+paginated newest-first.
 
 ---
 
 ## 14. System
-`GET /health` → `{ "status": "ok", "db": "ok", "redis": "ok", "version": "1.0.0" }`
+`GET /health` → `{ "status": "ok", "db": "ok", "version": "1.0.2" }` (503 +
+`"status":"degraded"` if the DB is unreachable; no `redis` field — Redis is not used).
 `GET /me/notifications` (requires `X-Project-Id`) → in-app alerts for the active project: low-stock items, plus users awaiting approval (org admins only). Only non-zero alerts are returned.
 
 ```json
@@ -329,11 +418,47 @@ All reports accept `?format=json|xlsx|csv`.
 
 ---
 
-## 15. OpenAPI
-The implementation ships a machine-readable `openapi.yaml` (OpenAPI 3.1) served at `GET /api/v1/openapi.json` and a Swagger UI at `/api/v1/docs`. All schemas above are generated from, and kept in sync with, that spec.
+## 15. Movement labels  (read: any member · manage: manager+)
+Admins/managers can rename the built-in movement types and add new labels, each
+mapped to one built-in behaviour so the ledger maths stay correct. Labels are
+org-scoped but the routes require an active `X-Project-Id`.
+
+`GET /txn-labels` → active labels for the org (the movement form reads these).
+`POST /txn-labels` → `{ "base_type":"issue", "label":"Dispatch", "sort_order":2 }` (manager+).
+`PATCH /txn-labels/{id}` → rename / re-map `base_type` / reorder (manager+).
+`DELETE /txn-labels/{id}` → deactivate (manager+); blocked if it is the **last**
+label for a behaviour ("rename it instead"). Historical transactions keep their
+captured label text. Post a movement with a label via `label_id` on `POST /transactions`
+(§4) instead of `type`.
 
 ---
 
-## 16. Rate limiting & versioning
-- Default limit: `120 req/min/IP` (configurable; see `03_ENV.md`).
+## 16. Platform admin  (super-admin above organizations)
+A separate console for provisioning company accounts. Platform tokens carry
+`{ platform: true }` and a 12 h TTL; they are not valid on org APIs. The first
+platform admin is bootstrapped from `PLATFORM_ADMIN_USERNAME` / `_PASSWORD` at API
+startup (never stored in the repo).
+
+`POST /platform/auth/login` → `{ access_token, admin }` (username + password).
+`GET /platform/currencies` → known currencies for the base-currency picker.
+`GET /platform/orgs` → all companies with user/site/item counts and flags.
+`POST /platform/orgs` → provision a company: org + default site/project + its
+org-admin login + seeded movement labels. Body includes `name`, `base_currency`,
+`admin_username`, `admin_password`, `admin_full_name`, and optional site/project codes.
+`PATCH /platform/orgs/{id}` → set `name`, `base_currency`, `is_active`
+(deactivate ⇒ users can't sign in, data retained), `require_user_approval`.
+`POST /platform/orgs/{id}/admins` → add another org-admin login to a company.
+
+---
+
+## 17. OpenAPI  **`[deferred]`**
+A machine-readable `openapi.yaml` (OpenAPI 3.1) at `GET /api/v1/openapi.json` and
+a Swagger UI at `/api/v1/docs` are planned but **not yet implemented**. Until then
+this document is the source of truth for the API contract.
+
+---
+
+## 18. Rate limiting & versioning
+- Default limit: `120 req/min/IP` (configurable; see `03_ENV.md`). Enforced
+  in-memory (no Redis); login has a stricter per-username lockout.
 - The API is versioned in the path (`/api/v1`). Breaking changes bump the major version; additive changes are backward-compatible.

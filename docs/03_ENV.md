@@ -24,6 +24,27 @@ This document describes all environment variables and configuration for the back
 
 ## 2. Backend `.env`
 
+> **As-built (reconciled 2026-06-14).** The block below is the original design
+> superset. The running backend only **reads** these (see `backend/src/config.ts`,
+> `utils/crypto.ts`, `index.ts`): `NODE_ENV`, `PORT`, `API_BASE_PATH`,
+> `DATABASE_URL`, `DB_POOL_MAX`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`,
+> `JWT_ACCESS_TTL`, `JWT_REFRESH_TTL`, `PASSWORD_SALT_ROUNDS`, `CORS_ORIGINS`,
+> `RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_MAX`, `DEFAULT_BASE_CURRENCY`,
+> `WRITE_OFF_APPROVAL_THRESHOLD`, `ALLOW_NEGATIVE_STOCK`, plus three not in the
+> original design:
+>
+> | Variable | Purpose |
+> |---|---|
+> | `FIELD_ENCRYPTION_KEY` | 32-byte/64-hex AES-256-GCM key for PII-at-rest (`02_DATABASE.md` §3.9). Blank ⇒ passthrough (no encryption). If lost, encrypted values are unrecoverable. |
+> | `PLATFORM_ADMIN_USERNAME` | Bootstraps the platform super-admin at API start (no-op if it exists). |
+> | `PLATFORM_ADMIN_PASSWORD` | Password for the bootstrapped platform admin. |
+>
+> The `REDIS_URL`, `S3_*`, `SMTP_*`, `COOKIE_SECRET`, `ENABLE_HTTPS_REDIRECT`,
+> `DB_POOL_MIN`, `DB_SSL`, `APP_BASE_URL`, `EXCHANGE_RATE_*`, `SENTRY_DSN` and
+> `LOG_LEVEL` vars below are **not yet wired** — Redis, S3 attachments, SMTP
+> email and Sentry are deferred (the app uses an in-memory rate limiter and a
+> Postgres `refresh_tokens` table instead). `pg` reads `DATABASE_URL` directly.
+
 Create `backend/.env` from `backend/.env.example`. **Never commit real secrets.**
 
 ```dotenv
@@ -91,6 +112,10 @@ SENTRY_DSN=
 ---
 
 ## 3. Frontend `.env`
+
+> **As-built:** in dev the frontend needs **no** `.env` — Vite proxies `/api` to
+> `http://localhost:4000` (see `frontend/vite.config.ts`); in prod nginx proxies
+> `/api` to the API container. The `VITE_*` vars below are optional/aspirational.
 
 Create `frontend/.env` from `frontend/.env.example`. Vite only exposes vars prefixed with `VITE_`.
 

@@ -6,6 +6,15 @@
 **Owner:** Samuel
 **Status:** Draft for review
 
+> **Implementation status (2026-06-14).** This PRD is the product *intent*. The
+> MVP plus much of Phase 2/3 is built — see the repo `README.md`, `UAT.md`, and
+> the **As-built** notes in `02_DATABASE.md`/`03_ENV.md`/`04_API.md`. Notable
+> differences from this document: sign-in is by **username** (not email);
+> self-service registration + approval, a platform/super-admin layer,
+> customizable movement labels, and PII encryption at rest were added. Still
+> **deferred**: attachments, email/Redis, camera barcode scanning, and `xlsx`
+> export.
+
 ---
 
 ## 1. Overview
