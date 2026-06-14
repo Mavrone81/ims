@@ -67,31 +67,70 @@ erDiagram
 
 ### 3.1 Tenancy, identity & access
 
+> **As-built (reconciled 2026-06-14).** The DDL below reflects the schema after
+> migrations `001`–`006` (`backend/migrations/`). Key deltas from the original
+> v1 design: login is by **`username`** (email is optional, encrypted contact
+> PII — no longer `CITEXT UNIQUE`); organizations gained `is_active` and
+> `require_user_approval`; users gained `self_registered` and `approval_status`;
+> and three tables were added — `refresh_tokens`, `platform_admins`, `txn_labels`
+> (§3.6a). See §3.9 for the column-level encryption convention.
+
 ```sql
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";        -- gen_random_uuid()
 CREATE EXTENSION IF NOT EXISTS "pg_trgm";         -- fast text search
+CREATE EXTENSION IF NOT EXISTS "citext";          -- case-insensitive username
 
 CREATE TABLE organizations (
-    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name          TEXT NOT NULL,
-    base_currency CHAR(3) NOT NULL DEFAULT 'USD',
-    settings      JSONB NOT NULL DEFAULT '{}',
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+    id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name                  TEXT NOT NULL,
+    base_currency         CHAR(3) NOT NULL DEFAULT 'USD',
+    settings              JSONB NOT NULL DEFAULT '{}',
+    is_active             BOOLEAN NOT NULL DEFAULT TRUE,   -- company on/off (platform admin)
+    require_user_approval BOOLEAN NOT NULL DEFAULT TRUE,   -- gate self-registration
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE users (
-    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    org_id         UUID NOT NULL REFERENCES organizations(id),
-    email          CITEXT NOT NULL UNIQUE,
-    full_name      TEXT NOT NULL,
-    password_hash  TEXT NOT NULL,
-    is_org_admin   BOOLEAN NOT NULL DEFAULT FALSE,
-    is_active      BOOLEAN NOT NULL DEFAULT TRUE,
-    last_login_at  TIMESTAMPTZ,
-    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-    deleted_at     TIMESTAMPTZ
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id          UUID NOT NULL REFERENCES organizations(id),
+    username        CITEXT NOT NULL UNIQUE,            -- login identifier
+    email           TEXT,                              -- optional, encrypted PII (§3.9)
+    full_name       TEXT NOT NULL,
+    password_hash   TEXT NOT NULL,                     -- bcrypt
+    is_org_admin    BOOLEAN NOT NULL DEFAULT FALSE,
+    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+    self_registered BOOLEAN NOT NULL DEFAULT FALSE,
+    approval_status TEXT NOT NULL DEFAULT 'approved'
+        CHECK (approval_status IN ('pending','approved','rejected')),
+    last_login_at   TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at      TIMESTAMPTZ
+);
+CREATE INDEX idx_users_pending ON users(org_id) WHERE approval_status = 'pending';
+
+-- Revocable refresh-token sessions (Redis-free substitute). Tokens are hashed.
+CREATE TABLE refresh_tokens (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     UUID NOT NULL REFERENCES users(id),
+    token_hash  TEXT NOT NULL,                         -- sha256 of the JWT
+    expires_at  TIMESTAMPTZ NOT NULL,
+    revoked_at  TIMESTAMPTZ,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_refresh_user ON refresh_tokens(user_id);
+
+-- Super-admins above all organizations (provision companies via /platform).
+-- Bootstrapped from PLATFORM_ADMIN_USERNAME/_PASSWORD at API startup.
+CREATE TABLE platform_admins (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    username      CITEXT NOT NULL UNIQUE,
+    full_name     TEXT NOT NULL DEFAULT 'Platform Admin',
+    password_hash TEXT NOT NULL,
+    is_active     BOOLEAN NOT NULL DEFAULT TRUE,
+    last_login_at TIMESTAMPTZ,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- Per-project role assignment (RBAC)
@@ -284,7 +323,8 @@ CREATE TABLE stock_transactions (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id      UUID NOT NULL REFERENCES projects(id),
     item_id         UUID NOT NULL REFERENCES items(id),
-    type            txn_type NOT NULL,
+    type            txn_type NOT NULL,        -- base behaviour (drives the maths)
+    label           TEXT,                     -- display label captured at movement time (§3.6a)
     quantity_delta  NUMERIC(18,3) NOT NULL,   -- +in / -out (Excel 'Qty Change')
     from_location_id UUID REFERENCES locations(id),  -- for issue/transfer
     to_location_id   UUID REFERENCES locations(id),  -- for receipt/transfer
@@ -304,26 +344,39 @@ CREATE INDEX idx_txn_project ON stock_transactions(project_id, performed_at DESC
 CREATE INDEX idx_txn_type    ON stock_transactions(type);
 ```
 
-**Trigger to keep `stock_levels` in sync (sketch):**
+**Trigger to keep `stock_levels` in sync (as-built — `migrations/001_init.sql`):**
+
+The implemented trigger special-cases `transfer` (which carries a positive
+magnitude in `quantity_delta` and moves it from→to); for all other types it
+applies the signed `quantity_delta` to whichever single location is set. Sign
+conventions are enforced in the service layer (`routes/transactions.ts`):
+`receipt`/`opening` `>0` to a `to_location`; `issue`/`write_off` `<0` from a
+`from_location`; `adjustment` signed on its `to_location`.
 
 ```sql
 CREATE OR REPLACE FUNCTION apply_stock_transaction() RETURNS TRIGGER AS $$
 BEGIN
-    -- decrement source (issue/transfer/write_off)
-    IF NEW.from_location_id IS NOT NULL THEN
+    IF NEW.type = 'transfer' THEN
+        -- move magnitude from source to destination
+        INSERT INTO stock_levels(item_id, location_id, quantity)
+        VALUES (NEW.item_id, NEW.from_location_id, -NEW.quantity_delta)
+        ON CONFLICT (item_id, location_id)
+        DO UPDATE SET quantity = stock_levels.quantity - NEW.quantity_delta, updated_at = now();
+
+        INSERT INTO stock_levels(item_id, location_id, quantity)
+        VALUES (NEW.item_id, NEW.to_location_id, NEW.quantity_delta)
+        ON CONFLICT (item_id, location_id)
+        DO UPDATE SET quantity = stock_levels.quantity + NEW.quantity_delta, updated_at = now();
+    ELSIF NEW.from_location_id IS NOT NULL THEN     -- issue / write_off (delta < 0)
         INSERT INTO stock_levels(item_id, location_id, quantity)
         VALUES (NEW.item_id, NEW.from_location_id, NEW.quantity_delta)
         ON CONFLICT (item_id, location_id)
-        DO UPDATE SET quantity = stock_levels.quantity + NEW.quantity_delta,
-                      updated_at = now();
-    END IF;
-    -- increment destination (receipt/transfer/opening)
-    IF NEW.to_location_id IS NOT NULL THEN
+        DO UPDATE SET quantity = stock_levels.quantity + NEW.quantity_delta, updated_at = now();
+    ELSIF NEW.to_location_id IS NOT NULL THEN       -- receipt / opening / adjustment (signed)
         INSERT INTO stock_levels(item_id, location_id, quantity)
-        VALUES (NEW.item_id, NEW.to_location_id, abs(NEW.quantity_delta))
+        VALUES (NEW.item_id, NEW.to_location_id, NEW.quantity_delta)
         ON CONFLICT (item_id, location_id)
-        DO UPDATE SET quantity = stock_levels.quantity + abs(NEW.quantity_delta),
-                      updated_at = now();
+        DO UPDATE SET quantity = stock_levels.quantity + NEW.quantity_delta, updated_at = now();
     END IF;
     RETURN NEW;
 END;
@@ -334,7 +387,26 @@ AFTER INSERT ON stock_transactions
 FOR EACH ROW EXECUTE FUNCTION apply_stock_transaction();
 ```
 
-> Note: sign conventions (`quantity_delta` negative for issues, positive for receipts) are enforced in the application/service layer and validated by a `CHECK` per `type` if desired.
+### 3.6a Movement labels (customizable transaction types)
+
+```sql
+-- Org-defined display labels, each mapped to one built-in txn_type behaviour.
+-- The label text is copied onto each stock_transaction (stock_transactions.label)
+-- so historical movements keep their wording even if the label is later changed.
+CREATE TABLE txn_labels (
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id     UUID NOT NULL REFERENCES organizations(id),
+    base_type  txn_type NOT NULL,        -- receipt|issue|transfer|adjustment|write_off
+    label      TEXT NOT NULL,
+    sort_order INT NOT NULL DEFAULT 0,
+    is_active  BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (org_id, label)
+);
+```
+
+> The built-in set (Receipt/Issue/Transfer/Adjustment/Write-off) is seeded per
+> organization at creation. `opening` has no label (system-generated).
 
 ### 3.7 Custom fields (admin-defined extensibility)
 
@@ -424,6 +496,26 @@ CREATE TABLE audit_logs (
 CREATE INDEX idx_audit_entity ON audit_logs(entity_type, entity_id);
 CREATE INDEX idx_audit_user   ON audit_logs(user_id, created_at DESC);
 ```
+
+> **As-built:** purchase-order tables exist but no routes are mounted (PO flow is
+> deferred — see `04_API.md` §10).
+
+### 3.9 Column-level PII encryption (at rest)
+
+Sensitive contact PII is encrypted by the application (AES-256-GCM) before it
+reaches PostgreSQL, so DB files and backups only ever hold ciphertext for these
+fields. No DDL type beyond `TEXT` is needed — values are stored in the format
+`enc:v1:<base64(iv|tag|ciphertext)>`; legacy plaintext and a no-key deployment
+both pass through unchanged on read, so the feature can be rolled out incrementally.
+
+| Table.column | Encrypted |
+|---|---|
+| `users.email` | yes (login is by `username`, so `email` lost its `CITEXT UNIQUE` in `006`) |
+| `suppliers.contact_name`, `suppliers.email`, `suppliers.phone` | yes |
+
+The key lives only in the app env (`FIELD_ENCRYPTION_KEY`, 32 bytes / 64 hex) — a
+separate trust domain from the database. Audit `before`/`after` snapshots capture
+the already-encrypted column values.
 
 ---
 
