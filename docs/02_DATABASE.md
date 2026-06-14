@@ -497,8 +497,10 @@ CREATE INDEX idx_audit_entity ON audit_logs(entity_type, entity_id);
 CREATE INDEX idx_audit_user   ON audit_logs(user_id, created_at DESC);
 ```
 
-> **As-built:** purchase-order tables exist but no routes are mounted (PO flow is
-> deferred — see `04_API.md` §10).
+> **As-built:** the purchase-order flow is implemented (`routes/purchaseOrders.ts`,
+> `04_API.md` §10). Receiving a line posts a `receipt` `stock_transaction` and
+> advances `purchase_orders.status` (`partial`/`received`); `qty_received`
+> accumulates per line.
 
 ### 3.9 Column-level PII encryption (at rest)
 

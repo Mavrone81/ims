@@ -11,8 +11,8 @@
 > running implementation. Sign-in is by **username**, not email (see §2). Two
 > token families exist — org-user tokens and platform-admin tokens — and they
 > are **not** interchangeable. Sections marked **`[deferred]`** describe designed
-> endpoints that are not yet implemented (purchase orders, attachments,
-> OpenAPI/Swagger, `xlsx` export); the rest is live.
+> endpoints that are not yet implemented (attachments, OpenAPI/Swagger, `xlsx`
+> export); the rest is live.
 
 ---
 
@@ -342,11 +342,35 @@ decrypted. `DELETE` deactivates (no hard delete) and revokes the user's sessions
 
 ---
 
-## 10. Purchase orders (lightweight)  **`[deferred]`**
-Designed but **not yet implemented**. The `purchase_orders` / `purchase_order_lines`
-tables exist (see `02_DATABASE.md`); no routes are mounted. Planned surface:
-`GET/POST /purchase-orders`, `GET/PATCH /purchase-orders/{id}`,
-`POST /purchase-orders/{id}/receive` (generates `receipt` transactions).
+## 10. Purchase orders (lightweight)
+Project-scoped (require `X-Project-Id`). Reads are open to any member; create /
+update / receive are **technician+** (a PO is an operational document like a
+receipt). A PO carries header fields plus one or more lines.
+
+`GET /purchase-orders?status=&supplier_id=&page=&page_size=` → paginated list,
+each row with `supplier_name`, `line_count`, `total_value` (Σ qty_ordered × unit_price).
+`GET /purchase-orders/{id}` → PO header + `lines` (item_no, description,
+qty_ordered, qty_received, unit_price).
+```json
+// POST /purchase-orders  (technician+)
+{ "supplier_id":"...", "po_number":"PO-2026-014", "currency":"SGD",
+  "status":"draft", "ordered_at":"2026-06-01", "expected_at":"2026-06-20",
+  "lines": [ { "item_id":"...", "qty_ordered": 5, "unit_price": 240 } ] }
+// 201 -> created PO with lines.  409 if po_number already exists in the project.
+```
+`PATCH /purchase-orders/{id}` (technician+) → update header (`po_number`, `status`,
+`currency`, `ordered_at`, `expected_at`).
+```json
+// POST /purchase-orders/{id}/receive  (technician+)
+{ "reference":"DN-5567",
+  "lines": [ { "line_id":"...", "qty": 3, "to_location_id":"..." } ] }
+```
+Receiving posts a `receipt` `stock_transaction` per line (so on-hand stays
+derived from the ledger), increments `qty_received`, and advances the PO status
+to `partial` or `received`. `to_location_id` is optional — it falls back to the
+line item's `default_location_id` (400 if neither is set). Over-receipt beyond a
+line's outstanding quantity is blocked (422); receiving against a `cancelled` PO
+is blocked (422).
 
 ---
 

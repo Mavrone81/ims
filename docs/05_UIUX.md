@@ -11,8 +11,9 @@
 > here. Added screens not in the original design: a **Login/Register** page
 > (username login + self-service registration), a **Change-password** modal, a
 > **Movement-labels** admin tab, and a standalone **`/platform`** super-admin
-> console. Deferred: attachments dropzone, purchasing/PO screens, and camera
-> barcode scanning (barcode *lookup* exists).
+> console, plus a **Purchasing** page (PO list, create-with-lines, and a
+> per-line receive flow). Deferred: attachments dropzone and camera barcode
+> scanning (barcode *lookup* exists).
 
 ---
 

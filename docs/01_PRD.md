@@ -12,8 +12,8 @@
 > differences from this document: sign-in is by **username** (not email);
 > self-service registration + approval, a platform/super-admin layer,
 > customizable movement labels, and PII encryption at rest were added. Still
-> **deferred**: attachments, purchase orders, email/Redis, camera barcode
-> scanning, and `xlsx` export.
+> **deferred**: attachments, email/Redis, camera barcode scanning, and `xlsx`
+> export.
 
 ---
 

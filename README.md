@@ -70,6 +70,9 @@ See [`docs/06_LOGIN.md`](docs/06_LOGIN.md) for the user-facing login guide.
   valuation/ABC reports convert to a selectable base currency.
 - **Reports** — valuation, reorder/low-stock, movements summary, ABC analysis
   (80/15/5 value share), write-offs; all exportable to CSV.
+- **Purchasing** — lightweight purchase orders (draft → ordered → partial →
+  received); receiving a line posts a `receipt` ledger entry so on-hand stays
+  derived, advances PO status, and blocks over-receipt.
 - **Audit** — every mutation logged to `audit_logs` (who/what/before/after/IP).
 - **UI** — dashboard (KPIs, low stock, recent movements), Excel-style inventory
   grid with filters, item detail with ledger history, type-switching movement
@@ -78,11 +81,14 @@ See [`docs/06_LOGIN.md`](docs/06_LOGIN.md) for the user-facing login guide.
 
 ## Deferred (per docs phasing)
 
-- Attachments (S3/MinIO), purchase orders + receive flow, email notifications,
-  barcode *scanning* via camera (lookup endpoint exists), Redis-backed rate
-  limiting/sessions (in-memory + Postgres substitutes in place), OpenAPI doc
-  generation, xlsx parsing server-side (import accepts JSON rows; the UI can
-  parse CSV client-side).
+- Attachments (S3/MinIO), email notifications, barcode *scanning* via camera
+  (lookup endpoint exists), Redis-backed rate limiting/sessions (in-memory +
+  Postgres substitutes in place), OpenAPI doc generation, xlsx parsing
+  server-side (import accepts JSON rows; the UI can parse CSV client-side).
+
+> The design docs in [`docs/`](docs/README.md) are kept reconciled with this
+> build — see the **As-built** callouts in `docs/02_DATABASE.md`,
+> `docs/03_ENV.md`, and `docs/04_API.md`.
 
 ## API
 

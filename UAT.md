@@ -8,7 +8,7 @@ push; the server only deploys a commit once CI is green.
 
 - **Environment:** https://ims.urbanwerkzsg.com (prod) · http://localhost:5173 (local)
 - **Automated tests:** `cd backend && npm test` (Vitest + Supertest, real Postgres)
-- **Last revised:** 2026-06-12
+- **Last revised:** 2026-06-14
 
 ## Test accounts (local/seed)
 
@@ -132,6 +132,18 @@ in your test log. `Automated? ✓` means a Vitest case asserts the same behaviou
 | UI-1 | Mobile nav | Open at 375px width | Hamburger drawer; no horizontal scroll | — |
 | UI-2 | Tablet | Open at 768px | Icon-rail sidebar; grids usable | — |
 | UI-3 | Desktop | Open at 1280px | Full layout unchanged | — |
+
+## 11. Purchase orders (lightweight)
+
+| ID | Title | Steps | Expected | Automated? |
+|---|---|---|---|---|
+| PO-1 | Create PO | Purchasing → + New PO → supplier, PO number, add line(s) | PO created with status `draft`; lines show ordered/received | ✓ |
+| PO-2 | Duplicate PO number | Create a PO with an existing number (same project) | 409 conflict | ✓ |
+| PO-3 | Partial receive | Receive fewer than ordered on a line | Status → `partial`; on-hand increases by the received qty; `qty_received` updated | ✓ |
+| PO-4 | Full receive | Receive the remaining outstanding qty | Status → `received`; on-hand equals total ordered | ✓ |
+| PO-5 | Over-receipt blocked | Receive more than a line's outstanding qty | 422; no stock posted | ✓ |
+| PO-6 | Default location | Receive a line whose item has a default location, no location chosen | Receipt posts to the item's default location; missing both ⇒ 400 | ✓ |
+| PO-7 | Permission | Viewer tries to create/receive a PO | 403 | ✓ |
 
 ---
 

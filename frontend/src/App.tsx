@@ -9,6 +9,7 @@ import ItemDetail from './pages/ItemDetail';
 import Movements from './pages/Movements';
 import Reports from './pages/Reports';
 import Suppliers from './pages/Suppliers';
+import Purchasing from './pages/Purchasing';
 import Admin from './pages/Admin';
 
 export default function App() {
@@ -30,6 +31,7 @@ export default function App() {
         <Route path="/movements" element={<Movements />} />
         <Route path="/reports" element={<Reports />} />
         <Route path="/suppliers" element={<Suppliers />} />
+        <Route path="/purchasing" element={<Purchasing />} />
         <Route path="/admin/*" element={<Admin />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

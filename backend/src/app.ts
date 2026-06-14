@@ -18,6 +18,7 @@ import { auditRouter } from './routes/audit.js';
 import { platformRouter } from './routes/platform.js';
 import { txnLabelsRouter } from './routes/txnLabels.js';
 import { notificationsRouter } from './routes/notifications.js';
+import { purchaseOrdersRouter } from './routes/purchaseOrders.js';
 
 /** Build the Express app (no listen) — shared by the server entrypoint and tests. */
 export function createApp() {
@@ -55,6 +56,7 @@ export function createApp() {
   // Project-scoped resources (require X-Project-Id)
   api.use('/items', authenticate, projectScope, itemsRouter);
   api.use('/transactions', authenticate, projectScope, transactionsRouter);
+  api.use('/purchase-orders', authenticate, projectScope, purchaseOrdersRouter);
   api.use('/stock', authenticate, projectScope, stockRouter);
   api.use('/custom-fields', authenticate, projectScope, customFieldsRouter);
   api.use('/txn-labels', authenticate, projectScope, txnLabelsRouter);

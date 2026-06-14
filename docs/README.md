@@ -32,6 +32,6 @@ Full documentation set for a robust, multi-site / multi-project Inventory Manage
 - **Column-level PII encryption** at rest (AES-256-GCM) for user/supplier contact fields.
 
 ## Deferred (designed, not yet built)
-Redis, S3 attachments, SMTP email, purchase-order flow, `xlsx` export, OpenAPI/Swagger, camera barcode scanning.
+Redis, S3 attachments, SMTP email, `xlsx` export, OpenAPI/Swagger, camera barcode scanning.
 
 > Note: DDL in doc 2 is grouped by domain for readability; apply migrations in dependency order (organizations → sites → projects → locations/categories/suppliers/currencies → items → stock/transactions → custom fields → purchasing/audit).
