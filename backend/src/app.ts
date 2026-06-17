@@ -18,6 +18,7 @@ import { auditRouter } from './routes/audit.js';
 import { platformRouter } from './routes/platform.js';
 import { txnLabelsRouter } from './routes/txnLabels.js';
 import { notificationsRouter } from './routes/notifications.js';
+import { assistantRouter } from './routes/assistant.js';
 
 /** Build the Express app (no listen) — shared by the server entrypoint and tests. */
 export function createApp() {
@@ -62,6 +63,7 @@ export function createApp() {
   api.use('/suppliers', authenticate, projectScope, suppliersRouter);
   api.use('/reports', authenticate, projectScope, reportsRouter);
   api.use('/me', authenticate, projectScope, notificationsRouter);
+  api.use('/assistant', authenticate, projectScope, assistantRouter);
 
   app.use(errorHandler);
   return app;

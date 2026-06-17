@@ -23,4 +23,7 @@ export const config = {
   defaultBaseCurrency: process.env.DEFAULT_BASE_CURRENCY ?? 'USD',
   writeOffApprovalThreshold: Number(process.env.WRITE_OFF_APPROVAL_THRESHOLD ?? 500),
   allowNegativeStock: (process.env.ALLOW_NEGATIVE_STOCK ?? 'false') === 'true',
+  // AI assistant (Anthropic Claude). Key is server-managed (.env); blank = feature disabled.
+  anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? '',
+  anthropicModel: process.env.ANTHROPIC_MODEL ?? 'claude-haiku-4-5-20251001',
 };
