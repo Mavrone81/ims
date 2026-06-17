@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useAuth, isManager } from '../auth';
 import { api } from '../api';
 import ChangePasswordModal from './ChangePasswordModal';
+import ChatWidget from './ChatWidget';
 
 interface ProjectOption {
   id: string;
@@ -87,6 +88,7 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+      <ChatWidget />
     </div>
   );
 }
