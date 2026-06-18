@@ -92,7 +92,7 @@ export default function Inventory() {
           <thead>
             <tr>
               <th>Item No</th><th>Description</th><th>Model</th><th>Supplier</th>
-              <th>Location</th><th className="num">On hand</th><th className="num">Unit price</th>
+              <th>Location</th><th className="num">QTY</th><th className="num">Unit price</th>
               <th className="num">Value</th><th>ABC</th>{canWrite(role) && <th />}
             </tr>
           </thead>
