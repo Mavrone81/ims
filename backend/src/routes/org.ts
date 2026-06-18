@@ -11,6 +11,45 @@ import { audit } from '../utils/audit.js';
 export const sitesRouter = Router();
 export const projectsRouter = Router();
 export const locationsRouter = Router();
+export const orgRouter = Router();
+
+// ── Organization settings (org-wide UI preferences in organizations.settings) ──
+// Known, validated keys only — keeps the JSONB blob from accumulating junk.
+const orgSettingsBody = z
+  .object({
+    // Label for the per-row stock action button on the Inventory table.
+    inventory_action_label: z.string().trim().min(1).max(24),
+  })
+  .partial();
+
+orgRouter.get(
+  '/',
+  asyncHandler(async (req, res) => {
+    const { rows } = await query(
+      `SELECT id, name, base_currency, settings FROM organizations WHERE id = $1`,
+      [req.user!.org_id]
+    );
+    if (!rows[0]) throw notFound('Organization not found');
+    res.json(rows[0]);
+  })
+);
+
+orgRouter.patch(
+  '/',
+  requireOrgAdmin,
+  asyncHandler(async (req, res) => {
+    const body = z.object({ settings: orgSettingsBody }).parse(req.body);
+    // `||` shallow-merges the provided keys into the existing settings, preserving others.
+    const { rows } = await query(
+      `UPDATE organizations SET settings = settings || $2::jsonb, updated_at = now()
+       WHERE id = $1 RETURNING id, name, base_currency, settings`,
+      [req.user!.org_id, JSON.stringify(body.settings)]
+    );
+    if (!rows[0]) throw notFound('Organization not found');
+    audit(req, 'org.settings_update', 'organization', req.user!.org_id, null, rows[0].settings);
+    res.json(rows[0]);
+  })
+);
 
 // ── Sites ─────────────────────────────────────────────────────────────
 const siteBody = z.object({ code: z.string().min(1), name: z.string().min(1), address: z.string().nullish() });

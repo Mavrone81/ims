@@ -11,7 +11,7 @@ import { transactionsRouter } from './routes/transactions.js';
 import { stockRouter } from './routes/stock.js';
 import { customFieldsRouter } from './routes/customFields.js';
 import { categoriesRouter, suppliersRouter, currenciesRouter, exchangeRatesRouter } from './routes/catalog.js';
-import { sitesRouter, projectsRouter, locationsRouter } from './routes/org.js';
+import { sitesRouter, projectsRouter, locationsRouter, orgRouter } from './routes/org.js';
 import { usersRouter } from './routes/users.js';
 import { reportsRouter } from './routes/reports.js';
 import { auditRouter } from './routes/audit.js';
@@ -45,6 +45,7 @@ export function createApp() {
   api.use('/platform', platformRouter);
 
   // Org-level resources (no project scope needed)
+  api.use('/org', authenticate, orgRouter);
   api.use('/sites', authenticate, sitesRouter);
   api.use('/projects', authenticate, projectsRouter);
   api.use('/locations', authenticate, locationsRouter);

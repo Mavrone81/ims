@@ -12,6 +12,7 @@ export interface User {
   full_name: string;
   is_org_admin: boolean;
   projects: ProjectMembership[];
+  org_settings?: { inventory_action_label?: string };
 }
 
 export interface Item {

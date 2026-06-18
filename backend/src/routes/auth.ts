@@ -34,6 +34,11 @@ async function issueRefresh(userId: string): Promise<string> {
   return token;
 }
 
+async function orgSettings(orgId: string) {
+  const { rows } = await query(`SELECT settings FROM organizations WHERE id = $1`, [orgId]);
+  return rows[0]?.settings ?? {};
+}
+
 async function userProjects(userId: string) {
   const { rows } = await query(
     `SELECT pm.project_id, pm.role, p.name AS project_name, p.code AS project_code
@@ -83,6 +88,7 @@ authRouter.post(
         full_name: user.full_name,
         is_org_admin: user.is_org_admin,
         projects: await userProjects(user.id),
+        org_settings: await orgSettings(user.org_id),
       },
     });
   })
@@ -223,6 +229,7 @@ authRouter.get(
       full_name: req.user!.full_name,
       is_org_admin: req.user!.is_org_admin,
       projects: await userProjects(req.user!.id),
+      org_settings: await orgSettings(req.user!.org_id),
     });
   })
 );

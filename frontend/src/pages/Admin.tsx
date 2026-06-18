@@ -218,17 +218,40 @@ const BASE_TYPES = [
 
 function MovementLabelsTab() {
   const toast = useToast();
+  const { user, refreshUser } = useAuth();
   const [labels, setLabels] = useState<any[]>([]);
   const [show, setShow] = useState(false);
   const [form, setForm] = useState({ label: '', base_type: 'issue' });
   const [editing, setEditing] = useState<any | null>(null);
   const [editLabel, setEditLabel] = useState('');
   const [error, setError] = useState('');
+  const [actionLabel, setActionLabel] = useState('');
+  const [savingAction, setSavingAction] = useState(false);
 
   const load = useCallback(() => {
     api<{ data: any[] }>('/txn-labels').then((r) => setLabels(r.data));
   }, []);
   useEffect(load, [load]);
+
+  // Inventory row action-button label lives in org settings (default "QTY").
+  useEffect(() => {
+    setActionLabel(user?.org_settings?.inventory_action_label ?? 'QTY');
+  }, [user]);
+
+  async function saveActionLabel() {
+    const value = actionLabel.trim();
+    if (!value) return;
+    setSavingAction(true);
+    try {
+      await api('/org', { method: 'PATCH', body: { settings: { inventory_action_label: value } } });
+      await refreshUser();
+      toast('Inventory button label saved');
+    } catch (err: any) {
+      toast(err.message ?? 'Failed to save label', true);
+    } finally {
+      setSavingAction(false);
+    }
+  }
 
   async function add() {
     try {
@@ -268,6 +291,30 @@ function MovementLabelsTab() {
 
   return (
     <>
+      {user?.is_org_admin && (
+        <div style={{ marginBottom: 24, paddingBottom: 20, borderBottom: '1px solid var(--border)' }}>
+          <h3 style={{ margin: '0 0 4px' }}>Inventory action button</h3>
+          <p style={{ color: 'var(--text-muted)', marginBottom: 10, maxWidth: 680 }}>
+            Label for the per-row stock button on the Inventory table (the one that opens “Record movement”). Defaults to “QTY”.
+          </p>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <input
+              style={{ maxWidth: 220 }}
+              value={actionLabel}
+              maxLength={24}
+              onChange={(e) => setActionLabel(e.target.value)}
+              placeholder="QTY"
+            />
+            <button
+              className="btn"
+              disabled={savingAction || !actionLabel.trim() || actionLabel.trim() === (user?.org_settings?.inventory_action_label ?? 'QTY')}
+              onClick={saveActionLabel}
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      )}
       <p style={{ color: 'var(--text-muted)', marginBottom: 12, maxWidth: 680 }}>
         Rename the movement types your team sees (e.g. “Issue” → “Dispatch”) or add new ones.
         Each label maps to a built-in behaviour so stock maths stay correct.

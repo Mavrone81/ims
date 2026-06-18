@@ -9,7 +9,8 @@ import MovementModal from '../components/MovementModal';
 
 export default function Inventory() {
   const navigate = useNavigate();
-  const { role } = useAuth();
+  const { role, user } = useAuth();
+  const actionLabel = user?.org_settings?.inventory_action_label || 'QTY';
   const toast = useToast();
   const [items, setItems] = useState<Item[]>([]);
   const [pagination, setPagination] = useState<Pagination | null>(null);
@@ -92,7 +93,7 @@ export default function Inventory() {
           <thead>
             <tr>
               <th>Item No</th><th>Description</th><th>Model</th><th>Supplier</th>
-              <th>Location</th><th className="num">QTY</th><th className="num">Unit price</th>
+              <th>Location</th><th className="num">On hand</th><th className="num">Unit price</th>
               <th className="num">Value</th><th>ABC</th>{canWrite(role) && <th />}
             </tr>
           </thead>
@@ -115,7 +116,7 @@ export default function Inventory() {
                   <td>{item.abc_class ?? '—'}</td>
                   {canWrite(role) && (
                     <td onClick={(e) => e.stopPropagation()}>
-                      <button className="btn ghost sm" onClick={() => setMovementItem(item)}>Move</button>
+                      <button className="btn ghost sm" onClick={() => setMovementItem(item)}>{actionLabel}</button>
                     </td>
                   )}
                 </tr>
