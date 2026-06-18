@@ -477,6 +477,35 @@ function UsersTab() {
   const [error, setError] = useState('');
   const [resetUser, setResetUser] = useState<any | null>(null);
   const [resetPw, setResetPw] = useState('');
+  const [editUser, setEditUser] = useState<any | null>(null);
+  const [editForm, setEditForm] = useState({ username: '', email: '', full_name: '', is_org_admin: false });
+  const [editError, setEditError] = useState('');
+
+  function openEdit(u: any) {
+    setEditError('');
+    setEditForm({ username: u.username, email: u.email ?? '', full_name: u.full_name, is_org_admin: !!u.is_org_admin });
+    setEditUser(u);
+  }
+
+  async function saveEdit() {
+    if (!editForm.username || !editForm.full_name) return;
+    try {
+      await api(`/users/${editUser.id}`, {
+        method: 'PATCH',
+        body: {
+          username: editForm.username,
+          full_name: editForm.full_name,
+          email: editForm.email || null,
+          is_org_admin: editForm.is_org_admin,
+        },
+      });
+      toast(`${editForm.full_name}'s profile updated`);
+      setEditUser(null);
+      load();
+    } catch (err: any) {
+      setEditError(err instanceof ApiRequestError ? err.message : (err.message ?? 'Update failed'));
+    }
+  }
 
   const load = useCallback(() => {
     api<{ data: any[] }>('/users').then((r) => setUsers(r.data));
@@ -554,6 +583,7 @@ function UsersTab() {
                     </>
                   ) : (
                     <>
+                      <button className="btn ghost sm" onClick={() => openEdit(u)}>Edit</button>
                       <button className="btn ghost sm" onClick={() => { setResetPw(''); setResetUser(u); }}>
                         Reset password
                       </button>
@@ -593,6 +623,29 @@ function UsersTab() {
           <div className="modal-actions">
             <button className="btn secondary" onClick={() => setShow(false)}>Cancel</button>
             <button className="btn" disabled={!form.username || !form.full_name || form.password.length < 8} onClick={save}>Create</button>
+          </div>
+        </Modal>
+      )}
+
+      {editUser && (
+        <Modal title={`Edit profile — ${editUser.username}`} onClose={() => setEditUser(null)}>
+          <div className="field"><label>Username * (login name)</label>
+            <input value={editForm.username} onChange={(e) => setEditForm({ ...editForm, username: e.target.value })} autoFocus /></div>
+          <div className="field"><label>Full name *</label>
+            <input value={editForm.full_name} onChange={(e) => setEditForm({ ...editForm, full_name: e.target.value })} /></div>
+          <div className="field"><label>Email (optional)</label>
+            <input type="email" value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} /></div>
+          <div className="field">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input type="checkbox" style={{ width: 'auto' }} checked={editForm.is_org_admin}
+                onChange={(e) => setEditForm({ ...editForm, is_org_admin: e.target.checked })} /> Organization admin
+            </label>
+          </div>
+          <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>Use “Reset password” to change this user’s password.</p>
+          {editError && <div className="error-text">{editError}</div>}
+          <div className="modal-actions">
+            <button className="btn secondary" onClick={() => setEditUser(null)}>Cancel</button>
+            <button className="btn" disabled={!editForm.username || !editForm.full_name} onClick={saveEdit}>Save</button>
           </div>
         </Modal>
       )}

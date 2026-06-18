@@ -3,7 +3,7 @@ import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { config } from '../config.js';
 import { query, withTransaction } from '../db.js';
-import { notFound } from '../errors.js';
+import { notFound, conflict } from '../errors.js';
 import { asyncHandler } from '../utils/http.js';
 import { requireOrgAdmin } from '../middleware/auth.js';
 import { audit } from '../utils/audit.js';
@@ -73,6 +73,8 @@ usersRouter.patch(
   asyncHandler(async (req, res) => {
     const body = z
       .object({
+        username: z.string().min(2).regex(/^[a-zA-Z0-9._-]+$/, 'letters, digits, . _ - only').optional(),
+        email: z.string().email().nullish(),
         full_name: z.string().min(1).optional(),
         password: z.string().min(8).optional(),
         is_org_admin: z.boolean().optional(),
@@ -80,17 +82,26 @@ usersRouter.patch(
       })
       .parse(req.body);
     const hash = body.password ? await bcrypt.hash(body.password, config.saltRounds) : null;
-    const { rows } = await query(
+    // Email: a present key (even null) sets the value; an absent key leaves it unchanged.
+    const emailProvided = body.email !== undefined;
+    const emailEnc = emailProvided ? encryptField(body.email ?? null) : null;
+    const rows = await query(
       `UPDATE users SET
-         full_name = COALESCE($3, full_name),
-         password_hash = COALESCE($4, password_hash),
-         is_org_admin = COALESCE($5, is_org_admin),
-         is_active = COALESCE($6, is_active),
+         username = COALESCE($3, username),
+         email = CASE WHEN $4::boolean THEN $5 ELSE email END,
+         full_name = COALESCE($6, full_name),
+         password_hash = COALESCE($7, password_hash),
+         is_org_admin = COALESCE($8, is_org_admin),
+         is_active = COALESCE($9, is_active),
          updated_at = now()
        WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL
        RETURNING id, username, email, full_name, is_org_admin, is_active`,
-      [req.params.id, req.user!.org_id, body.full_name ?? null, hash, body.is_org_admin ?? null, body.is_active ?? null]
-    );
+      [req.params.id, req.user!.org_id, body.username ?? null, emailProvided, emailEnc,
+       body.full_name ?? null, hash, body.is_org_admin ?? null, body.is_active ?? null]
+    ).then((r) => r.rows).catch((e: any) => {
+      if (e?.code === '23505') throw conflict('That username is already taken');
+      throw e;
+    });
     if (!rows[0]) throw notFound('User not found');
     // If the password was reset, revoke the target user's sessions (M4).
     if (hash) {
