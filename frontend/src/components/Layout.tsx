@@ -39,7 +39,6 @@ export default function Layout() {
           <NavLink to="/movements">Movements</NavLink>
           <NavLink to="/reports">Reports</NavLink>
           <NavLink to="/suppliers">Suppliers</NavLink>
-          <NavLink to="/assistant">AI Assistant</NavLink>
           {isManager(role) && (
             <>
               <div className="section-label">Admin</div>
