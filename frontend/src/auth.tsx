@@ -10,6 +10,7 @@ interface AuthState {
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
   switchProject: (id: string) => void;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState>(null as any);
@@ -73,12 +74,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setActiveProjectId(id);
   }
 
+  async function refreshUser() {
+    const me = await api<User>('/auth/me');
+    setUser(me);
+  }
+
   const role = user?.is_org_admin
     ? 'admin'
     : (user?.projects.find((p) => p.project_id === activeProjectId)?.role ?? null);
 
   return (
-    <AuthContext.Provider value={{ user, loading, activeProjectId, role, login, logout, switchProject }}>
+    <AuthContext.Provider value={{ user, loading, activeProjectId, role, login, logout, switchProject, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

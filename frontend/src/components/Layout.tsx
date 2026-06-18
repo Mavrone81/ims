@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useAuth, isManager } from '../auth';
 import { api } from '../api';
 import ChangePasswordModal from './ChangePasswordModal';
+import ProfileModal from './ProfileModal';
 import ChatWidget from './ChatWidget';
 
 interface ProjectOption {
@@ -16,6 +17,7 @@ export default function Layout() {
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [navOpen, setNavOpen] = useState(false);
   const [showChangePw, setShowChangePw] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
 
   useEffect(() => {
     api<{ data: any[] }>('/projects')
@@ -75,6 +77,9 @@ export default function Layout() {
           <span className="user-chip">
             {user?.full_name} · {role ?? 'no role'}
           </span>
+          <button className="btn secondary sm" onClick={() => setShowProfile(true)}>
+            Edit profile
+          </button>
           <button className="btn secondary sm" onClick={() => setShowChangePw(true)}>
             Change password
           </button>
@@ -82,6 +87,7 @@ export default function Layout() {
             Sign out
           </button>
         </header>
+        {showProfile && <ProfileModal onClose={() => setShowProfile(false)} />}
         {showChangePw && <ChangePasswordModal onClose={() => setShowChangePw(false)} />}
         <main className="content">
           <Outlet />

@@ -226,3 +226,39 @@ authRouter.get(
     });
   })
 );
+
+// Self-service profile update for any authenticated user (own full name / email).
+authRouter.patch(
+  '/me',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const body = z
+      .object({
+        full_name: z.string().trim().min(1).max(120).optional(),
+        // null clears the email; omit to leave unchanged.
+        email: z.string().trim().email().max(200).nullish(),
+      })
+      .parse(req.body);
+    if (body.full_name === undefined && body.email === undefined) {
+      throw badRequest('Nothing to update');
+    }
+    const { rows } = await query(
+      `UPDATE users SET
+         full_name = COALESCE($2, full_name),
+         email = CASE WHEN $3::boolean THEN $4 ELSE email END,
+         updated_at = now()
+       WHERE id = $1
+       RETURNING id, username, email, full_name, is_org_admin`,
+      [req.user!.id, body.full_name ?? null, body.email !== undefined, encryptField(body.email ?? null)]
+    );
+    const u = rows[0];
+    res.json({
+      id: u.id,
+      username: u.username,
+      email: decryptField(u.email),
+      full_name: u.full_name,
+      is_org_admin: u.is_org_admin,
+      projects: await userProjects(req.user!.id),
+    });
+  })
+);
