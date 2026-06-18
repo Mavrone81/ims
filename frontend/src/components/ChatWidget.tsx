@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, ApiRequestError } from '../api';
 import { useAuth } from '../auth';
+import { Markdown } from './Markdown';
 
 interface Attachment {
   media_type: string;
@@ -166,8 +167,8 @@ export default function ChatWidget() {
                   </div>
                 )}
                 {m.content && (
-                  <div style={{ background: m.role === 'user' ? accent : 'var(--background, #f5f7fa)', color: m.role === 'user' ? '#fff' : 'inherit', borderRadius: 12, padding: '8px 12px', whiteSpace: 'pre-wrap', lineHeight: 1.5, fontSize: 13.5 }}>
-                    {m.content}
+                  <div style={{ background: m.role === 'user' ? accent : 'var(--background, #f5f7fa)', color: m.role === 'user' ? '#fff' : 'inherit', borderRadius: 12, padding: '8px 12px', lineHeight: 1.5, fontSize: 13.5, ...(m.role === 'user' ? { whiteSpace: 'pre-wrap' as const } : {}) }}>
+                    {m.role === 'assistant' ? <Markdown text={m.content} /> : m.content}
                   </div>
                 )}
               </div>
