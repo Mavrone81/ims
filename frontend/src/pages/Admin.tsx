@@ -634,12 +634,22 @@ function UsersTab() {
                       <button className="btn ghost sm" onClick={() => { setResetPw(''); setResetUser(u); }}>
                         Reset password
                       </button>
-                      {u.is_active && (
+                      {u.is_active ? (
                         <button className="btn ghost sm" onClick={async () => {
                           if (!confirm(`Deactivate ${u.full_name}?`)) return;
                           await api(`/users/${u.id}`, { method: 'DELETE' });
                           load();
                         }}>Deactivate</button>
+                      ) : u.approval_status !== 'rejected' && (
+                        <button className="btn ghost sm" onClick={async () => {
+                          try {
+                            await api(`/users/${u.id}`, { method: 'PATCH', body: { is_active: true } });
+                            toast(`${u.full_name} reactivated`);
+                            load();
+                          } catch (err: any) {
+                            toast(err.message ?? 'Failed', true);
+                          }
+                        }}>Activate</button>
                       )}
                     </>
                   )}
