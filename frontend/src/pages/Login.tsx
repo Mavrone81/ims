@@ -115,12 +115,13 @@ export default function Login() {
                 </select>
               </div>
               <div className="field">
-                <label>Username *</label>
+                <label>Username / Badge Number *</label>
                 <input value={reg.username} onChange={(e) => setReg({ ...reg, username: e.target.value })} autoComplete="username" required />
               </div>
               <div className="field">
-                <label>Full name *</label>
-                <input value={reg.full_name} onChange={(e) => setReg({ ...reg, full_name: e.target.value })} required />
+                <label>Name</label>
+                <input value={reg.full_name} onChange={(e) => setReg({ ...reg, full_name: e.target.value })}
+                  placeholder="Defaults to your username / badge number" />
               </div>
               <div className="field">
                 <label>Email (optional)</label>
@@ -132,7 +133,7 @@ export default function Login() {
               </div>
               {error && <div className="error-text">{error}</div>}
               <button className="btn" style={{ width: '100%', marginTop: 8 }}
-                disabled={busy || !reg.org_id || !reg.username || !reg.full_name || reg.password.length < 8}>
+                disabled={busy || !reg.org_id || !reg.username || reg.password.length < 8}>
                 {busy ? 'Submitting…' : 'Register'}
               </button>
               <p style={{ marginTop: 16, textAlign: 'center' }}>

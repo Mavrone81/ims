@@ -154,11 +154,13 @@ authRouter.post(
       .object({
         org_id: z.string().uuid(),
         username: z.string().min(2).regex(/^[a-zA-Z0-9._-]+$/, 'letters, digits, . _ - only'),
-        full_name: z.string().min(1),
+        full_name: z.string().trim().optional(),
         email: z.string().email().nullish(),
         password: z.string().min(8),
       })
       .parse(req.body);
+    // Name is optional on self-registration — fall back to the username / badge number.
+    const fullName = body.full_name || body.username;
 
     const org = (
       await query(`SELECT id, require_user_approval FROM organizations WHERE id = $1 AND is_active`, [
@@ -174,7 +176,7 @@ authRouter.post(
         `INSERT INTO users (org_id, username, email, full_name, password_hash,
                             is_org_admin, self_registered, approval_status)
          VALUES ($1, $2, $3, $4, $5, FALSE, TRUE, $6)`,
-        [body.org_id, body.username, encryptField(body.email ?? null), body.full_name, hash, status]
+        [body.org_id, body.username, encryptField(body.email ?? null), fullName, hash, status]
       );
     } catch (err: any) {
       if (err?.code === '23505') throw conflict('That username is already taken');
